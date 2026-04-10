@@ -1,338 +1,324 @@
 # RotorHazard VRx Control for the ExpressLRS Backpack
 
-This is a plugin being developed for the RotorHazard timing system with the following features: 
-- [X] Send OSD messages to pilots using compatible equipment (such as the [HDZero goggles](https://www.youtube.com/watch?v=VXwaUoA16jc)) 
-- [X] Allows for the race manager to [start the race from their transmitter](https://github.com/i-am-grub/VRxC_ELRS?tab=readme-ov-file#control-the-race-from-the-race-directors-transmitter)
-- [ ] Pilot's `ready` status from their transmitter
+これは以下の機能を持つ RotorHazard タイミングシステム向けのプラグインです：
+- [X] 対応機器（[HDZero ゴーグル](https://www.youtube.com/watch?v=VXwaUoA16jc) など）を使用するパイロットへ OSD メッセージを送信
+- [X] レース管理者が[送信機からレースを開始](https://github.com/i-am-grub/VRxC_ELRS?tab=readme-ov-file#control-the-race-from-the-race-directors-transmitter)できる機能
+- [ ] パイロットの `ready` ステータスを送信機から送信
 
-See [here](https://github.com/i-am-grub/VRxC_ELRS/issues/5) for the plugin's current roadmap
+プラグインの現在のロードマップは[こちら](https://github.com/i-am-grub/VRxC_ELRS/issues/5)を参照してください。
 
-## How does it work?
+## どのように動作するか？
 
-This plugin is built to control to an external device or chip running the ExpressLRS Timer backpack over a serial port. This allows the
-timing system to communicate with other devices with an ELRS backpack built into them giving the timer the ability to receive state messages
-from a pilot's transmitter, or send messages to display OSD information directly to a pilot's goggles.
+このプラグインは、シリアルポートを通じて ExpressLRS タイマーバックパックを実行している外部デバイスまたはチップを制御するために構築されています。これにより、タイミングシステムは ELRS バックパックが内蔵された他のデバイスと通信できるようになり、パイロットの送信機から状態メッセージを受信したり、OSD 情報をパイロットのゴーグルに直接表示するメッセージを送信したりすることができます。
 
-## I'm a pilot. What do I need to setup?
+## パイロット向け：セットアップに必要なこと
 
-Currently, the only device supported for receiving OSD race messages from the ELRS backpack is the HDZero goggles. They come with
-an internal ESP32 chip installed for the ExpressLRS backpack. Update the goggles's video receiver backpack to the latest version by either using the
-[ExpressLRS Configurator](https://github.com/ExpressLRS/ExpressLRS-Configurator/releases) or the 
-[ExpressLRS Web Flasher](https://expresslrs.github.io/web-flasher/). Follow [this guide](https://www.expresslrs.org/hardware/backpack/hdzero-goggles/) for
-the first time installation process. If assistance is needed with the installation or upgrading the goggle firmware, 
-ask for help in the `help-and-support` channels of the [ExpressLRS Discord](https://discord.gg/expresslrs).
+現在、ELRS バックパックから OSD レースメッセージを受信できる唯一のデバイスは HDZero ゴーグルです。これらのゴーグルには ExpressLRS バックパック用の内蔵 ESP32 チップが搭載されています。
+[ExpressLRS Configurator](https://github.com/ExpressLRS/ExpressLRS-Configurator/releases) または [ExpressLRS Web Flasher](https://expresslrs.github.io/web-flasher/) を使用して、ゴーグルのビデオレシーバーバックパックを最新バージョンに更新してください。初回インストールは[このガイド](https://www.expresslrs.org/hardware/backpack/hdzero-goggles/)に従ってください。インストールやゴーグルファームウェアのアップグレードについてサポートが必要な場合は、[ExpressLRS Discord](https://discord.gg/expresslrs) の `help-and-support` チャンネルで質問してください。
 
 > [!IMPORTANT]
-> REMEMBER YOUR BACKPACK BIND PHRASE: The timer's backpack will use it to send OSD messages from the timer to your HDZero goggles.
-> You will likely need to provide the bind phrase to the race director if you want OSD information at your race.
+> バックパックのバインドフレーズを必ず覚えておいてください：タイマーのバックパックはこれを使用して、タイマーから HDZero ゴーグルへ OSD メッセージを送信します。
+> レースで OSD 情報を受信したい場合は、レースディレクターにバインドフレーズを提供する必要があります。
 
 > [!NOTE]
-> The backpack bind phrase can either be the same or different than the bind phrase used for the ExpressLRS radio protocol. 
-> Setting the same bind phrase will not cause the backpack to interfere with the radio protocol.
+> バックパックのバインドフレーズは、ExpressLRS 無線プロトコルで使用するバインドフレーズと同じでも異なっていても構いません。
+> 同じバインドフレーズを設定しても、バックパックが無線プロトコルに干渉することはありません。
 
-## Setup Directions for Race Directors
+## レースディレクター向けセットアップ手順
 
-### Installing the Timer Backpack
+### タイマーバックパックのインストール
 
-The list below is of some of the known compatible devices for the RotorHazard Timer Backpack. It is recommended to use a chip that is capable of connecting an external WIFI antenna to
-help improve the range of the timer's backpack.
+以下は RotorHazard タイマーバックパックに対応している既知のデバイスの一覧です。タイマーバックパックの通信範囲を改善するために、外部 WIFI アンテナを接続できるチップの使用を推奨します。
 
-| ELRS Device           | Compatible Hardware                                                                                                   |
+| ELRS デバイス           | 対応ハードウェア                                                                                                   |
 | --------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| EP82 Module (DIY)     | [ESP8266 NodeMCU](https://a.co/d/9vgX3Tx)                                                                             |
-| EP32 Module (DIY)     | [ESP32-DevKitC](https://a.co/d/62OGBgG)                                                                               |
-| EP32C3 Module (DIY)   | [ESP32-C3-DevKitM-1U](https://www.digikey.com/en/products/detail/espressif-systems/ESP32-C3-DEVKITM-1U/15198974)      |
-| EP32S3 Module (DIY)   | [ESP32-S3-DevKitC-1U](https://www.digikey.com/en/products/detail/espressif-systems/ESP32-S3-DEVKITC-1U-N8R8/16162636) |
-| NuclearHazard         | [NuclearHazard Board](https://www.etsy.com/listing/1428199972/nuclearhazard-core-kit-case-and-rx-sold) v7 or newer    |
-| [ELRS-Netpack](https://github.com/i-am-grub/elrs-netpack) (DIY) | [Waveshare ESP32-S3 Ethernet](https://www.waveshare.com/esp32-s3-eth.htm)   |
+| EP82 モジュール（DIY）     | [ESP8266 NodeMCU](https://a.co/d/9vgX3Tx)                                                                             |
+| EP32 モジュール（DIY）     | [ESP32-DevKitC](https://a.co/d/62OGBgG)                                                                               |
+| EP32C3 モジュール（DIY）   | [ESP32-C3-DevKitM-1U](https://www.digikey.com/en/products/detail/espressif-systems/ESP32-C3-DEVKITM-1U/15198974)      |
+| EP32S3 モジュール（DIY）   | [ESP32-S3-DevKitC-1U](https://www.digikey.com/en/products/detail/espressif-systems/ESP32-S3-DEVKITC-1U-N8R8/16162636) |
+| NuclearHazard         | [NuclearHazard Board](https://www.etsy.com/listing/1428199972/nuclearhazard-core-kit-case-and-rx-sold) v7 以降    |
+| [ELRS-Netpack](https://github.com/i-am-grub/elrs-netpack)（DIY） | [Waveshare ESP32-S3 Ethernet](https://www.waveshare.com/esp32-s3-eth.htm)   |
 
 > [!TIP]
-> While other specific development boards with similar chipsets may be supported by the targets in the table, it is not guaranteed that they work.
-> For example, the Seeed Studio XIAO ESP32C3/S3 board do not work with the targets listed above, but when using the 
-> [ExpressLRS Toolchain](https://www.expresslrs.org/software/toolchain-install/) for building the backpack firmware,
-> the platformio settings can be changed to build compatible firmware for XIAO boards.
+> 同様のチップセットを持つ他の開発ボードが表のターゲットでサポートされる場合がありますが、動作は保証されません。
+> 例えば、Seeed Studio XIAO ESP32C3/S3 ボードは上記ターゲットでは動作しませんが、
+> バックパックファームウェアのビルドに [ExpressLRS Toolchain](https://www.expresslrs.org/software/toolchain-install/) を使用する場合、
+> platformio の設定を変更して XIAO ボード向けの互換ファームウェアをビルドすることができます。
 
 > [!NOTE]
-> While a normal ExpressLRS reciever can be flashed with backpack firmware and be used for the timer backpack, this is not recommended.
-> The primary reason behind this is that the ELRS backpack is based on ESPNow which uses the WIFI hardware of the ESP32/ESP82.
-> Recievers typically have a small ceramic antenna installed seperately for connecting to the web UI over WIFI; this antenna is
-> different than the the one(s) reserved for the radio protocol. The ceramic antennta would likely be less performant over an ESP32 
-> devkit with an external WIFI antenna connected.
+> 通常の ExpressLRS レシーバーにバックパックファームウェアを書き込んでタイマーバックパックとして使用することは可能ですが、推奨しません。
+> 主な理由は、ELRS バックパックが ESP32/ESP82 の WIFI ハードウェアを使用する ESPNow をベースにしているためです。
+> レシーバーは通常、WIFI 経由でウェブ UI に接続するための小型セラミックアンテナが別途搭載されていますが、このアンテナは
+> 無線プロトコル用のアンテナとは異なります。セラミックアンテナは、外部 WIFI アンテナを接続した ESP32 開発キットと比較してパフォーマンスが劣る可能性があります。
 
-#### Flashing ESP32/ESP82 Devkits
+#### ESP32/ESP82 開発キットへの書き込み
 
-To build and flash the firmware, use the [ExpressLRS Configurator](https://github.com/ExpressLRS/ExpressLRS-Configurator/releases) or the [ExpressLRS Web Flasher](https://expresslrs.github.io/web-flasher/)
-1. Connect the device to the computer over USB.
+ファームウェアのビルドと書き込みには、[ExpressLRS Configurator](https://github.com/ExpressLRS/ExpressLRS-Configurator/releases) または [ExpressLRS Web Flasher](https://expresslrs.github.io/web-flasher/) を使用してください。
 
-> If Windows doesn't recognize the device connected over USB, a driver install or update may be required.
-> Espressif designed boards typically either use the [CP210x](https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers) or
-> [FTDI](https://ftdichip.com/drivers/vcp-drivers/) USB to serial converter chips
+1. USB でデバイスをコンピューターに接続します。
 
-2. Select the backpack firmware mode
-    - If using the configurator, select `Backpack` on the left side menu. 
-    - If using the Web Flasher, select `Race Timer` under the Backpack Firmware section 
-3. Select the 1.5.0 (or a newer) release 
-4. Select the RotorHazard device category
-5. Select the target for the device
-6. Select the UART flashing method
-7. Enter the backpack bind phrase (for race control from the director's transmitter)
-8. Select the COM port for the device
-9. Build and flash the firmware
+> Windows がデバイスを認識しない場合は、ドライバーのインストールまたは更新が必要な場合があります。
+> Espressif 製ボードは通常、[CP210x](https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers) または
+> [FTDI](https://ftdichip.com/drivers/vcp-drivers/) USB シリアル変換チップを使用しています。
 
-#### Flashing NuclearHazard Hardware
+2. バックパックファームウェアモードを選択します。
+    - Configurator を使用する場合、左側メニューの `Backpack` を選択します。
+    - Web Flasher を使用する場合、Backpack Firmware セクションの `Race Timer` を選択します。
+3. 1.5.0（またはそれ以降）のリリースを選択します。
+4. RotorHazard デバイスカテゴリを選択します。
+5. デバイスのターゲットを選択します。
+6. UART 書き込み方法を選択します。
+7. バックパックのバインドフレーズを入力します（ディレクターの送信機からのレース制御用）。
+8. デバイスの COM ポートを選択します。
+9. ファームウェアをビルドして書き込みます。
 
-To build the firmware, use the [ExpressLRS Configurator](https://github.com/ExpressLRS/ExpressLRS-Configurator/release) or the [ExpressLRS Web Flasher](https://expresslrs.github.io/web-flasher/)
+#### NuclearHazard ハードウェアへの書き込み
 
-1. Select the backpack firmware section
-   - If using the configurator, select `Backpack` on the left side menu. 
-   - If using the Web Flasher, select `Race Timer` under the Backpack Firmware section 
-2. Select the 1.5.0 release (or a newer version) 
-3. Select the RotorHazard device category
-4. Select NuclearHazard as the device
-5. Select the method
-    - If using the configurator, select `WIFI`. 
-    - If using the Web Flasher, select `Local Download` 
-6. Enter the backpack bind phrase (for race control from the director's transmitter)
-7. Build the firmware
-8. Follow [this guide](https://nuclearquads.com/instructions/vrxc) to flash the on board ESP32. Instead of downloading the backpack bin files, use the files built with the configurator.
+ファームウェアのビルドには、[ExpressLRS Configurator](https://github.com/ExpressLRS/ExpressLRS-Configurator/release) または [ExpressLRS Web Flasher](https://expresslrs.github.io/web-flasher/) を使用してください。
 
-#### Flashing ELRS Netpack
+1. バックパックファームウェアセクションを選択します。
+   - Configurator を使用する場合、左側メニューの `Backpack` を選択します。
+   - Web Flasher を使用する場合、Backpack Firmware セクションの `Race Timer` を選択します。
+2. 1.5.0（またはそれ以降）のリリースを選択します。
+3. RotorHazard デバイスカテゴリを選択します。
+4. デバイスとして NuclearHazard を選択します。
+5. 方法を選択します。
+    - Configurator を使用する場合、`WIFI` を選択します。
+    - Web Flasher を使用する場合、`Local Download` を選択します。
+6. バックパックのバインドフレーズを入力します（ディレクターの送信機からのレース制御用）。
+7. ファームウェアをビルドします。
+8. [このガイド](https://nuclearquads.com/instructions/vrxc)に従って、オンボード ESP32 に書き込みます。バックパックのバイナリファイルをダウンロードする代わりに、Configurator でビルドしたファイルを使用してください。
 
-1. Download the [netpack-installer](https://github.com/i-am-grub/netpack-installer) plugin from the community plugins
-list
-2. Connect the required ESP32 devkit to your timer
-3. In the `ELRS Netpack Firmware` panel (found on the `Settings` page), select the serial port of the connected device
-and press the `Flash Netpack Firmware` button.
+#### ELRS Netpack への書き込み
 
-### Installing the RotorHazard Plugin
+1. コミュニティプラグインリストから [netpack-installer](https://github.com/i-am-grub/netpack-installer) プラグインをダウンロードします。
+2. 必要な ESP32 開発キットをタイマーに接続します。
+3. `Settings` ページの `ELRS Netpack Firmware` パネルで、接続されたデバイスのシリアルポートを選択し、
+`Flash Netpack Firmware` ボタンを押します。
 
-1. Verify RotorHazard v4.1.0+ is installed on the timer
-2. Follow the instructions in the [latest release](https://github.com/i-am-grub/VRxC_ELRS/releases) of the plugin to complete the installation process.
+### RotorHazard プラグインのインストール
 
-### Control the Race from the Race Director's Transmitter
+1. タイマーに RotorHazard v4.1.0 以降がインストールされていることを確認します。
+2. プラグインの[最新リリース](https://github.com/i-am-grub/VRxC_ELRS/releases)の指示に従って、インストールを完了してください。
 
-There is a feature to control the race from the race director's transmitter by tracking the position of the `DVR Rec` switch setup within the transmitter's backpack. It currently works
-by binding the race timer's backpack to the race director's backpack bind phrase similar to the process used with the transmitter and VRx backpacks. 
+### レースディレクターの送信機からレースを制御する
 
-Currently only starting and stopping the race are supported. Setting up this feature will not prevent other users from receiving OSD messages.
+送信機のバックパック内で設定した `DVR Rec` スイッチの位置をトラッキングすることで、レースディレクターの送信機からレースを制御する機能があります。現在は、送信機と VRx バックパックで使用されるプロセスと同様に、レースタイマーのバックパックをレースディレクターのバックパックバインドフレーズにバインドすることで機能します。
+
+現在はレースの開始と停止のみサポートされています。この機能を設定しても、他のユーザーが OSD メッセージを受信できなくなることはありません。
 
 > [!IMPORTANT]
-> This feature requires the Race Director to have the ELRS Backpack setup on their transmitter. Please ensure this is setup before completing the following instructions.
+> この機能を使用するには、レースディレクターの送信機に ELRS バックパックがセットアップされている必要があります。以下の手順を完了する前に、必ずセットアップを確認してください。
 
-1. Setup the `DVR Rec` switch in the ELRS backpack
-    1. Open the ExpressLRS Lua script (v3 is recommended) on the transmitter
-    2. Open up the Backpack settings
-    3. Set the AUX channel for `DVR Rec`
+1. ELRS バックパックで `DVR Rec` スイッチをセットアップします。
+    1. 送信機で ExpressLRS Lua スクリプト（v3 推奨）を開きます。
+    2. バックパック設定を開きます。
+    3. `DVR Rec` の AUX チャンネルを設定します。
 
 > [!NOTE]
-> This will not stop the ability to start recording DVR through this switch. It is just a state that the race timer's backpack listens for.
+> これによって、このスイッチで DVR 録画を開始する機能が失われることはありません。レースタイマーのバックパックが監視する状態にすぎません。
 
-2. Bind the Race Timer backpack to the Transmitter. This step can be skipped if flashing the timer's backpack with firmware that contains the race director's backpack bind phrase.
-    1. Start the RotorHazard server with the ESP32 connected.
-    2. Navigate to the `ELRS Backpack General Settings` panel.
-    3. Click the `Start Backpack Bind` button.
-    4. Within the ExpressLRS Lua script on the transmitter, click `Bind`
+2. レースタイマーバックパックを送信機にバインドします。タイマーのバックパックにレースディレクターのバックパックバインドフレーズを含むファームウェアを書き込んだ場合、このステップはスキップできます。
+    1. ESP32 を接続した状態で RotorHazard サーバーを起動します。
+    2. `ELRS Backpack General Settings` パネルに移動します。
+    3. `Start Backpack Bind` ボタンをクリックします。
+    4. 送信機の ExpressLRS Lua スクリプトで `Bind` をクリックします。
 
-To test to see if the backpack was bound successfully, navigate to the `Race` page within RotorHazard, and use the `DVR Rec` switch to start the race. 
+バックパックが正常にバインドされたかテストするには、RotorHazard の `Race` ページに移動し、`DVR Rec` スイッチでレースを開始します。
 [Start Race from Transmitter](https://github.com/i-am-grub/VRxC_ELRS?tab=readme-ov-file#start-race-from-transmitter--checkbox)
-or [Stop Race from Transmitter](https://github.com/i-am-grub/VRxC_ELRS?tab=readme-ov-file#stop-race-from-transmitter--checkbox) 
-will need to be enabled under `ELRS Backpack General Settings`
+または [Stop Race from Transmitter](https://github.com/i-am-grub/VRxC_ELRS?tab=readme-ov-file#stop-race-from-transmitter--checkbox)
+を `ELRS Backpack General Settings` で有効にする必要があります。
 
 > [!TIP]
-> Anytime the backpack needs to be bound to a new transmitter, it will be easiest to reflash the ESP32 with the firmware in the latest release, and then rebind.
+> バックパックを新しい送信機にバインドし直す必要がある場合は、最新リリースのファームウェアで ESP32 を再書き込みしてから再バインドするのが最も簡単です。
 
-# Extra Hardware Notes
+# 追加ハードウェアに関する注意事項
 
-## 3D Printed Case
+## 3D プリントケース
 
-Some users have like to use the following 3D printable case available on [Printables](https://www.printables.com/model/762529-esp32-wroom-32u-casing) for
-an externally connected `ESP32-DevKitC-1U` board.
+一部のユーザーは、外付け `ESP32-DevKitC-1U` ボード用として [Printables](https://www.printables.com/model/762529-esp32-wroom-32u-casing) で公開されている以下の 3D プリント可能なケースを使用することを好んでいます。
 
 ![Case](docs/3DPrint/wirex-1.webp)
 
-## WIFI Signal Booster
+## WIFI シグナルブースター
 
-The quality and reliability of the ExpressLRS backpack is significantly dependent on the HDZero goggle's ability to receive the backpack messages from the timer. Since the
-antenna for the goggle's backpack is inside and there may be additional RF interference on the 2.4 GHz with pilot's radio protocols, a WIFI signal booster may help increase
-the reliability of the backpack.
+ExpressLRS バックパックの品質と信頼性は、HDZero ゴーグルがタイマーからバックパックメッセージを受信する能力に大きく依存しています。ゴーグルのバックパック用アンテナは内部にあり、パイロットの無線プロトコルによる 2.4 GHz 帯の追加 RF 干渉が発生する可能性があるため、WIFI シグナルブースターがバックパックの信頼性向上に役立つ場合があります。
 
-My personal setup:
+個人的なセットアップ：
 - [ESP32-DevKitC](https://a.co/d/62OGBgG)
-- [U.FL to RP-SMA Cables](https://a.co/d/7n99T9o)   
-- [800mW Pen Bi-Directional Booster Module](https://www.data-alliance.net/800mw-bi-directional-booster-module-w-rp-sma-female-connectors/)
-- [USB Power Cable for powering the booster from the RaspberryPi](https://a.co/d/9iAPV57)
-- A high gain 2.4 GHz WIFI antenna with RP-SMA connection
+- [U.FL to RP-SMA ケーブル](https://a.co/d/7n99T9o)
+- [800mW ペン双方向ブースターモジュール](https://www.data-alliance.net/800mw-bi-directional-booster-module-w-rp-sma-female-connectors/)
+- [RaspberryPi からブースターに電源供給するための USB 電源ケーブル](https://a.co/d/9iAPV57)
+- RP-SMA 接続対応の高ゲイン 2.4 GHz WIFI アンテナ
 
 > [!NOTE]
-> An ESP32 typically has a maximum power setting less than 100 milliwatts without a signal booster
+> ESP32 は通常、シグナルブースターなしで 100 ミリワット未満の最大出力設定です。
 
-## USB Extension Cable
+## USB 延長ケーブル
 
-[Some groups](https://youtu.be/FZvmfyvRiPE?si=LXu0zXUpDj9NsnUN&t=201) have had good luck with moving the ESP32 closer to the pilots by using a long USB cable or a USB extension cable.
+[一部のグループ](https://youtu.be/FZvmfyvRiPE?si=LXu0zXUpDj9NsnUN&t=201)では、長い USB ケーブルや USB 延長ケーブルを使用して ESP32 をパイロットに近づけることで良い結果を得ています。
 
 > [!NOTE]
-> The RotorHazard development team is looking into setting up the ability to peform a serial-over-https connection. This will allow groups to connect the timer backpack directly to
-> the race director's computer instead of the timer. 
+> RotorHazard 開発チームは、シリアル over HTTPS 接続を設定する機能の実装を検討しています。これにより、タイマーバックパックをタイマーではなく、レースディレクターのコンピューターに直接接続できるようになります。
 
-# Settings
+# 設定
 
-## Pilot Settings
+## パイロット設定
 
 ![Pilot Settings](docs/pilot_atts.png)
 
-### ELRS BP Bindphrase : TEXT
+### ELRS BP バインドフレーズ : TEXT
 
-The pilot's individual bind phrase for their backpack. If a bind phrase is not set, the pilot's callsign will be used as a fallback bind phrase instead.
+パイロット個人のバックパック用バインドフレーズ。バインドフレーズが設定されていない場合、代わりにパイロットのコールサインがバインドフレーズとして使用されます。
 
 ### Enable ELRS OSD : CHECKBOX
 
-Turns the pilot's ELRS OSD on/off
+パイロットの ELRS OSD をオン/オフにします。
 
-## ELRS Backpack General Settings
+## ELRS バックパック一般設定
 
 ![General Settings](docs/general_settings.png)
 
 ### Start Race from Transmitter : CHECKBOX
 
-Allows the race director to start the race from their transmitter. Please navigate [here](https://github.com/i-am-grub/VRxC_ELRS#control-the-race-from-the-race-directors-transmitter) for binding the backpack.
+レースディレクターが送信機からレースを開始できるようにします。バックパックのバインドについては[こちら](https://github.com/i-am-grub/VRxC_ELRS#control-the-race-from-the-race-directors-transmitter)を参照してください。
 
 ### Stop Race from Transmitter : CHECKBOX
 
-Allows the race director to stop the race from their transmitter. Please navigate [here](https://github.com/i-am-grub/VRxC_ELRS#control-the-race-from-the-race-directors-transmitter) for binding the backpack.
+レースディレクターが送信機からレースを停止できるようにします。バックパックのバインドについては[こちら](https://github.com/i-am-grub/VRxC_ELRS#control-the-race-from-the-race-directors-transmitter)を参照してください。
 
 ### Autosave on stop : CHECKBOX
 
-Automatically save the race when stopping from the transmitter
+送信機から停止した際にレースを自動保存します。
 
 ### Backpack Rescan : BUTTON
 
-Triggers the timer to scan the serial devices for a backpack device. Only works if the timer is not already connected to a backpack device
+タイマーにシリアルデバイスをスキャンしてバックパックデバイスを探させます。タイマーがまだバックパックデバイスに接続されていない場合のみ動作します。
 
 ### Start Backpack Bind : BUTTON
 
-Puts the timer's backpack into a binding mode for pairing with the race director's transmitter.
+タイマーのバックパックをレースディレクターの送信機とのペアリング用バインドモードにします。
 
 > [!TIP]
-> After successfully completing this process, the timer's backpack will inherit the race director's bind phrase from the transmitter.
+> このプロセスが正常に完了すると、タイマーのバックパックは送信機からレースディレクターのバインドフレーズを引き継ぎます。
 
 ### Test Bound Backpack's OSD : BUTTON
 
-Will display OSD messages on HDZero goggles with a matching bind phrase. Used for testing if the timer's backpack successfully inherited the transmitter's bind phrase.
+一致するバインドフレーズを持つ HDZero ゴーグルに OSD メッセージを表示します。タイマーのバックパックが送信機のバインドフレーズを正常に引き継いだかテストするために使用します。
 
 ### Start Backpack WIFI : BUTTON
 
-Starts the backpack's WIFI mode. Used for over-the-air firmware updates. 
+バックパックの WIFI モードを開始します。無線ファームウェア更新に使用します。
 
 > [!TIP]
-> To connect to the backpack's web user interface, verify the backpack is setup to connect to the same network as the device used to access the web user interface,
-> or connect the device to the wireless network the backpack created. Open `http://elrs_timer.local` in the device's browser to connect to the web user interface.
+> バックパックのウェブユーザーインターフェースに接続するには、バックパックがウェブユーザーインターフェースにアクセスするデバイスと同じネットワークに接続するよう設定するか、バックパックが作成したワイヤレスネットワークにデバイスを接続してください。デバイスのブラウザで `http://elrs_timer.local` を開いてウェブユーザーインターフェースに接続します。
 
-## ELRS Backpack OSD Settings
+## ELRS バックパック OSD 設定
 
 ![OSD Settings](docs/osd_settings.png)
 
 > [!NOTE]
-> It is a goal of this project to eventually move all the OSD settings in this section to be pilot configurable through the ExpressLRS VRx backpack's web user interface.
-> The current implementation is noted to be a work around until enough progress has been completed on the VRx backpack for individual pilot configuration.
+> このプロジェクトの目標として、このセクションのすべての OSD 設定を、最終的には ExpressLRS VRx バックパックのウェブユーザーインターフェースを通じてパイロットが個別に設定できるようにすることを目指しています。
+> 現在の実装は、VRx バックパックでの個別パイロット設定に向けた進捗が十分に完了するまでの暫定的な回避策です。
 
 ### Show Heat Name : CHECKBOX
 
-Shows the race's heat name to pilots when active
+レースのアクティブ時にヒート名をパイロットに表示します。
 
 ### Show Round Number : CHECKBOX
 
-Shows the race's round number to pilots when active. Also requires `Show Heat Name` to be active.
+レースのアクティブ時にラウンド番号をパイロットに表示します。`Show Heat Name` も有効にする必要があります。
 
 ### Show Class Name : CHECKBOX
 
-Shows the race's class name to pilots when active
+レースのアクティブ時にクラス名をパイロットに表示します。
 
 ### Show Event Name : CHECKBOX
 
-Shows the race's event name to pilots when active
+レースのアクティブ時にイベント名をパイロットに表示します。
 
 ### Show Current Position and Lap : CHECKBOX
 
-- TOGGLED ON: Shows current position and current lap when multiple pilots are in a race
-- TOGGLED OFF: Only shows current lap
+- オン：複数のパイロットがレース中の場合、現在の順位と現在のラップを表示します。
+- オフ：現在のラップのみを表示します。
 
 ### Show Gap Time : CHECKBOX
 
-- TOGGLED ON: Shows the gap time to next pilot if using a compatible win condition for the race
-- TOGGLED OFF: Shows lap result time
+- オン：レースで互換性のある勝利条件を使用している場合、次のパイロットまでのギャップタイムを表示します。
+- オフ：ラップ結果時間を表示します。
 
 ### Show Post-Race Results : CHECKBOX
 
-The pilot will be shown results when they finish the race. It is recommended to have pilots turn off `Post Flight Results` in Betaflight so the results won't be overridden when the pilot lands.
+パイロットがレースを終了した際に結果を表示します。着陸時に Betaflight の `Post Flight Results` によって結果が上書きされないよう、パイロットにはこの設定をオフにすることを推奨します。
 
 ### Race Stage Message : TEXT
 
-The message shown to pilots when the timer is staging the race
+タイマーがレースをステージング中にパイロットに表示されるメッセージ。
 
 ### Race Start Message : TEXT
 
-The message shown to pilots when the race first starts
+レースが開始された直後にパイロットに表示されるメッセージ。
 
 ### Pilot Done Message : TEXT
 
-The message shown to pilots when the pilot finishes
+パイロットがレースを終了した際にパイロットに表示されるメッセージ。
 
 ### Race Finish Message : TEXT
 
-The message shown to pilots when the time runs out
+制限時間が来た際にパイロットに表示されるメッセージ。
 
 ### Race Stop Message : TEXT
 
-The message shown to pilots when the race is stopped
+レースが停止された際にパイロットに表示されるメッセージ。
 
 ### Race Leader Message : TEXT
 
-The message shown to pilots when `Show Gap Time` is enabled and the pilot is leading the race
+`Show Gap Time` が有効でパイロットがレースをリードしている場合にパイロットに表示されるメッセージ。
 
 ### Start Message Uptime : INT
 
-The length of time `Race Start Message` is shown to pilots
+`Race Start Message` がパイロットに表示される時間の長さ。
 
 ### Finish Message Uptime : INT
 
-The length of time `Pilot Done Message` and `Race Finish Message` is shown to pilots
+`Pilot Done Message` と `Race Finish Message` がパイロットに表示される時間の長さ。
 
 ### Lap Result Uptime : INT
 
-Length of time the pilot's lap or gap time is shown after completing a lap. 
+ラップ完了後にパイロットのラップまたはギャップタイムが表示される時間の長さ。
 
 ### Announcement Uptime : INT
 
-Length of time to show announcements to pilots. (e.g. When a race is scheduled)
+パイロットへのアナウンスを表示する時間の長さ（例：レースがスケジュールされたとき）。
 
 ### Heat Name Row : INT
 
-Row to show the heat name on when the race is staging.
+レースのステージング時にヒート名を表示する行。
 
 ### Class Name Row : INT
 
-Row to show the class name on when the race is staging.
+レースのステージング時にクラス名を表示する行。
 
 ### Event Name Row : INT
 
-Row to show the event name on when the race is staging.
+レースのステージング時にイベント名を表示する行。
 
 ### Announcement Row : INT
 
-Row to show announcements such as when a race is scheduled. This row is also used by `Show Race Name on Stage`
+レースがスケジュールされた際などのアナウンスを表示する行。この行は `Show Race Name on Stage` でも使用されます。
 
 ### Race Status Row : INT
 
-Row to show race status messages.
+レースステータスメッセージを表示する行。
 
 ### Current Lap/Position Row : INT
 
-Row to show current lap and position
+現在のラップと順位を表示する行。
 
 ### Lap/Gap Results Row : INT
 
-Row to show lap or gap time
+ラップまたはギャップタイムを表示する行。
 
 ### Results Rows : INT
 
-The row to start showing a pilot's post race statistics on. It will also use the follow row in conjunction with the entered one.
+パイロットのレース後の統計を表示し始める行。入力した行とその次の行も使用されます。
