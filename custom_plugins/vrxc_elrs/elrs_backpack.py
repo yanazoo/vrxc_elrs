@@ -78,7 +78,7 @@ class ELRSBackpack(VRxController):
         Starts the connection loop
         """
         if self._backpack_connected:
-            message = "Backpack already connected"
+            message = "バックパックはすでに接続されています"
             self._rhapi.ui.message_notify(self._rhapi.language.__(message))
             return
 
@@ -87,7 +87,7 @@ class ELRSBackpack(VRxController):
             if id_ == con.id_:
                 break
         else:
-            message = "Connection type not provided"
+            message = "接続タイプが指定されていません"
             self._rhapi.ui.message_notify(self._rhapi.language.__(message))
             return
 
@@ -109,7 +109,7 @@ class ELRSBackpack(VRxController):
                 self._establish_connection(con.type_)
 
             else:
-                message = "Instance not running on Raspberry Pi"
+                message = "Raspberry Pi 上で動作していません"
                 self._rhapi.ui.message_notify(self._rhapi.language.__(message))
 
         elif con == ConnectionTypeEnum.SOCKET:
@@ -118,12 +118,12 @@ class ELRSBackpack(VRxController):
                 try:
                     ip_addr = socket.gethostbyname(addr)
                 except socket.gaierror:
-                    message = "Failed to connect to device's socket"
+                    message = "デバイスのソケットへの接続に失敗しました"
                     self._rhapi.ui.message_notify(self._rhapi.language.__(message))
                 else:
                     self._establish_connection(con.type_, ip_addr=ip_addr)
             else:
-                message = "IP Address for socket not provided"
+                message = "ソケットの IP アドレスが指定されていません"
                 self._rhapi.ui.message_notify(self._rhapi.language.__(message))
 
     def _establish_connection(
@@ -140,11 +140,11 @@ class ELRSBackpack(VRxController):
 
         self._connection = connection_type(self._send_queue, self._recieve_queue)
         if not self._connection.connect(**kwargs):
-            message = "Attempt to establish backpack connection failed"
+            message = "バックパック接続の確立に失敗しました"
             self._rhapi.ui.message_notify(self._rhapi.language.__(message))
             return
 
-        message = "Backpack sucessfully connected"
+        message = "バックパックへの接続に成功しました"
         self._rhapi.ui.message_notify(self._rhapi.language.__(message))
 
         self.version_request()
@@ -164,7 +164,7 @@ class ELRSBackpack(VRxController):
                         version = bytes(i for i in packet.payload if i != 0).decode(
                             "utf-8"
                         )
-                        message = f"Backpack device firmware version: {version}"
+                        message = f"バックパックファームウェアバージョン: {version}"
                         logger.info(message)
                         self._rhapi.ui.message_notify(self._rhapi.language.__(message))
 
@@ -184,14 +184,14 @@ class ELRSBackpack(VRxController):
         Disconnect the connection loop
         """
         if not self._backpack_connected:
-            message = "Backpack not connected"
+            message = "バックパックが接続されていません"
             self._rhapi.ui.message_notify(self._rhapi.language.__(message))
             return
 
         assert self._connection is not None
         self._connection.disconnect()
 
-        message = "Backpack disconnected"
+        message = "バックパックが切断されました"
         self._rhapi.ui.message_notify(self._rhapi.language.__(message))
 
     #
@@ -362,7 +362,7 @@ class ELRSBackpack(VRxController):
         Sends a packet to put the connected device in
         bind mode
         """
-        message = "Activating backpack's bind mode..."
+        message = "バックパックのバインドモードを起動中..."
         self._rhapi.ui.message_notify(self._rhapi.language.__(message))
 
         packet = MSPPacket()
@@ -376,7 +376,7 @@ class ELRSBackpack(VRxController):
         Sends a packet to put the connected device in
         bind mode
         """
-        message = "Turning on backpack's wifi..."
+        message = "バックパックの WiFi を起動中..."
         self._rhapi.ui.message_notify(self._rhapi.language.__(message))
 
         packet = MSPPacket()
@@ -467,7 +467,7 @@ class ELRSBackpack(VRxController):
         # Generate heat message
         heat_name_row = self._rhapi.db.option("_heatname_row")
         if all([use_heat_name, use_round_num, heat_name, round_num]):
-            round_trans = self._rhapi.__("Round")
+            round_trans = "ラウンド"
             heat_message = (
                 f"x {heat_name.upper()} | {round_trans.upper()} {round_num} w"
             )
