@@ -1,0 +1,107 @@
+#!/usr/bin/env python3
+"""
+RotorHazard の language.json に日本語訳を追加するスクリプト
+Usage: python3 add_japanese.py
+"""
+import json
+import os
+
+TRANSLATIONS = {
+    "ELRS BP Bind Phrase": "ELRS BP バインドフレーズ",
+    "Enable ELRS OSD": "ELRS OSD を有効にする",
+    "ELRS Backpack General Settings": "ELRS バックパック 一般設定",
+    "ELRS Backpack OSD Settings": "ELRS バックパック OSD 設定",
+    "Start Race from Transmitter": "送信機からレースを開始",
+    "Allows the race director to remotely start races": "レースディレクターが送信機からレースを開始できます",
+    "Stop Race from Transmitter": "送信機からレースを停止",
+    "Allows the race director to remotely stop races": "レースディレクターが送信機からレースを停止できます",
+    "Autosave on stop": "停止時に自動保存",
+    "Automatically save the race when stopping from the transmitter": "送信機から停止した際にレースを自動保存します",
+    "ELRS Netpack Address": "ELRS Netpack アドレス",
+    "Hostanme or IP Address of the ELRS Netpack": "ELRS Netpack のホスト名または IP アドレス",
+    "Backback Connection Type": "バックパック接続タイプ",
+    "Select the type of connection to use for the backpack": "バックパックの接続タイプを選択します",
+    "Show Heat Name": "ヒート名を表示",
+    "Show the heat's name on start": "スタート時にヒート名を表示します",
+    "Show Round Number": "ラウンド番号を表示",
+    "Show round number on start": "スタート時にラウンド番号を表示します",
+    "Show Class Name": "クラス名を表示",
+    "Show the class's name on start": "スタート時にクラス名を表示します",
+    "Show Event Name": "イベント名を表示",
+    "Show the event's name on start": "スタート時にイベント名を表示します",
+    "Show Current Position and Lap": "現在の順位とラップを表示",
+    "off - only shows current lap": "オフ時は現在のラップのみ表示",
+    "Show Gap Time": "ギャップタイムを表示",
+    "off - shows lap time": "オフ時はラップタイムを表示",
+    "Show Post-Race Results": "レース後の結果を表示",
+    "Show pilot's results upon race completion": "レース終了時にパイロットの結果を表示します",
+    "Race Stage Message": "ステージングメッセージ",
+    "lowercase letters are symbols": "小文字はシンボルとして使用されます",
+    "Race Start Message": "レーススタートメッセージ",
+    "Pilot Done Message": "パイロット完了メッセージ",
+    "Race Finish Message": "レース終了メッセージ",
+    "Race Stop Message": "レース停止メッセージ",
+    "Race Leader Message": "レースリーダーメッセージ",
+    "Start Message Uptime": "スタートメッセージ表示時間",
+    "decaseconds": "デカ秒（×0.1秒）",
+    "Finish Message Uptime": "終了メッセージ表示時間",
+    "Lap Result Uptime": "ラップ結果表示時間",
+    "Announcement Uptime": "アナウンス表示時間",
+    "Heat Name Row": "ヒート名の行",
+    "Use rows between 0-17": "0〜17 の行を指定",
+    "Class Name Row": "クラス名の行",
+    "Event Name Row": "イベント名の行",
+    "Announcement Row": "アナウンスの行",
+    "Race Status Row": "レースステータスの行",
+    "Current Lap/Position Row": "現在のラップ/順位の行",
+    "Lap/Gap Results Row": "ラップ/ギャップ結果の行",
+    "Results Rows": "結果の行",
+    "Use rows between 0-16. Uses two rows.": "0〜16 の行を指定（2行使用）",
+    "Backpack Connect": "バックパック接続",
+    "Backpack Disconnect": "バックパック切断",
+    "Start Backpack Bind": "バックパックバインド開始",
+    "Test Bound Backpack's OSD": "バインド済みバックパックの OSD テスト",
+    "Start Backpack WiFi": "バックパック WiFi 起動",
+    "Backpack already connected": "バックパックはすでに接続されています",
+    "Connection type not provided": "接続タイプが指定されていません",
+    "Instance not running on Raspberry Pi": "Raspberry Pi 上で動作していません",
+    "Failed to connect to device's socket": "デバイスのソケットへの接続に失敗しました",
+    "IP Address for socket not provided": "ソケットの IP アドレスが指定されていません",
+    "Attempt to establish backpack connection failed": "バックパック接続の確立に失敗しました",
+    "Backpack sucessfully connected": "バックパックへの接続に成功しました",
+    "Activating backpack's bind mode...": "バックパックのバインドモードを起動中...",
+    "Turning on backpack's wifi...": "バックパックの WiFi を起動中...",
+    "Backpack not connected": "バックパックが接続されていません",
+    "Backpack disconnected": "バックパックが切断されました",
+    "Round": "ラウンド",
+}
+
+CANDIDATES = [
+    "/home/NuclearHazard/RotorHazard/src/server/language.json",
+    os.path.expanduser("~/RotorHazard/src/server/language.json"),
+]
+
+path = None
+for c in CANDIDATES:
+    if os.path.exists(c):
+        path = c
+        break
+
+if path is None:
+    print("language.json が見つかりません。パスを確認してください。")
+    raise SystemExit(1)
+
+with open(path, "r", encoding="utf-8") as f:
+    data = json.load(f)
+
+if "ja" not in data:
+    data["ja"] = {"name": "日本語", "values": {}}
+
+data["ja"]["values"].update(TRANSLATIONS)
+
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(data, f, ensure_ascii=False, indent=2)
+
+print(f"完了！ {len(TRANSLATIONS)} 件の日本語訳を追加しました。")
+print(f"ファイル: {path}")
+print("RotorHazard を再起動してください: sudo systemctl restart rotorhazard")

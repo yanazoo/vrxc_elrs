@@ -696,13 +696,16 @@ class ELRSBackpack(VRxController):
                     message = f"x {formatted_time1} | {gap_info.current.consecutives_base}/{formatted_time2} w"
                 elif (
                     gap_info.race.win_condition == WinCondition.FASTEST_LAP
-                    and gap_info.current.is_best
+                    and gap_info.current.is_best_lap
                 ):
                     formatted_time = self._rhapi.utils.format_split_time_to_str(
                         gap_info.current.last_lap_time, "{m}:{s}.{d}"
                     )
                     message = f"x BEST LAP | {formatted_time} w"
-                else:
+                elif gap_info.race.win_condition in (
+                    WinCondition.FASTEST_LAP,
+                    WinCondition.FIRST_TO_LAP_X,
+                ):
                     formatted_time1 = self._rhapi.utils.format_split_time_to_str(
                         gap_info.current.last_lap_time, "{m}:{s}.{d}"
                     )
@@ -710,6 +713,12 @@ class ELRSBackpack(VRxController):
                         gap_info.current.total_time_laps, "{m}:{s}.{d}"
                     )
                     message = f"x {formatted_time1} | {formatted_time2} w"
+                else:
+                    # Lap timer only (MOST_LAPS / NONE) - show single lap time
+                    formatted_time = self._rhapi.utils.format_split_time_to_str(
+                        gap_info.current.last_lap_time, "{m}:{s}.{d}"
+                    )
+                    message = f"x {formatted_time} w"
 
             elif gap_info.race.win_condition == WinCondition.FASTEST_CONSECUTIVE:
                 formatted_time1 = self._rhapi.utils.format_split_time_to_str(
@@ -742,18 +751,26 @@ class ELRSBackpack(VRxController):
                     message = f"x {formatted_callsign} | +{formatted_time} w"
 
             else:
-                if gap_info.next_rank.diff_time:
-                    formatted_time = self._rhapi.utils.format_split_time_to_str(
-                        gap_info.next_rank.diff_time, "{m}:{s}.{d}"
-                    )
-                    formatted_callsign = str.upper(gap_info.next_rank.callsign)
-                    message = f"x {formatted_callsign} | +{formatted_time} w"
+                if gap_info.race.win_condition == WinCondition.FIRST_TO_LAP_X:
+                    if gap_info.next_rank.diff_time:
+                        formatted_time = self._rhapi.utils.format_split_time_to_str(
+                            gap_info.next_rank.diff_time, "{m}:{s}.{d}"
+                        )
+                        formatted_callsign = str.upper(gap_info.next_rank.callsign)
+                        message = f"x {formatted_callsign} | +{formatted_time} w"
 
-                elif gap_info.current.lap_number:
-                    formatted_time = self._rhapi.utils.format_split_time_to_str(
-                        gap_info.current.last_lap_time, "{m}:{s}.{d}"
-                    )
-                    message = f"x {self._rhapi.db.option('_leader_message')} | {formatted_time} w"
+                    elif gap_info.current.lap_number:
+                        formatted_time = self._rhapi.utils.format_split_time_to_str(
+                            gap_info.current.last_lap_time, "{m}:{s}.{d}"
+                        )
+                        message = f"x {self._rhapi.db.option('_leader_message')} | {formatted_time} w"
+                else:
+                    # Lap timer only (MOST_LAPS / NONE) - show single lap time
+                    if gap_info.current.lap_number:
+                        formatted_time = self._rhapi.utils.format_split_time_to_str(
+                            gap_info.current.last_lap_time, "{m}:{s}.{d}"
+                        )
+                        message = f"x {formatted_time} w"
 
             start_col = self.center_osd(len(message))
 
