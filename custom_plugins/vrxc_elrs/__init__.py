@@ -1,4 +1,6 @@
+import json
 import logging
+import os
 
 import RHAPI
 from eventmanager import Evt
@@ -10,7 +12,37 @@ from .elrs_backpack import ELRSBackpack
 logger = logging.getLogger(__name__)
 
 
+def _load_locale(rhapi: RHAPI.RHAPI) -> None:
+    """
+    Load plugin locale files into RotorHazard's language dictionary.
+    Each JSON file in the locale/ directory is named <lang_code>.json.
+    A special "_name" key sets the display name for the language.
+    """
+    locale_dir = os.path.join(os.path.dirname(__file__), "locale")
+    if not os.path.isdir(locale_dir):
+        return
+
+    lang_dict = rhapi.language.dictionary
+    for filename in sorted(os.listdir(locale_dir)):
+        if not filename.endswith(".json"):
+            continue
+        lang_code = filename[:-5]
+        filepath = os.path.join(locale_dir, filename)
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            display_name = data.pop("_name", lang_code)
+            if lang_code not in lang_dict:
+                lang_dict[lang_code] = {"name": display_name, "values": {}}
+            lang_dict[lang_code]["values"].update(data)
+            logger.info("Loaded locale '%s' (%s)", lang_code, display_name)
+        except Exception as exc:
+            logger.warning("Failed to load locale '%s': %s", filename, exc)
+
+
 def initialize(rhapi: RHAPI.RHAPI):
+
+    _load_locale(rhapi)
 
     controller = ELRSBackpack("elrs", "ELRS", rhapi)
 
