@@ -1,6 +1,4 @@
-import json
 import logging
-import os
 
 import RHAPI
 from eventmanager import Evt
@@ -12,37 +10,7 @@ from .elrs_backpack import ELRSBackpack
 logger = logging.getLogger(__name__)
 
 
-def _load_locale(rhapi: RHAPI.RHAPI) -> None:
-    """
-    Load plugin locale files into RotorHazard's language dictionary.
-    Each JSON file in the locale/ directory is named <lang_code>.json.
-    A special "_name" key sets the display name for the language.
-    """
-    locale_dir = os.path.join(os.path.dirname(__file__), "locale")
-    if not os.path.isdir(locale_dir):
-        return
-
-    lang_dict = rhapi.language.dictionary
-    for filename in sorted(os.listdir(locale_dir)):
-        if not filename.endswith(".json"):
-            continue
-        lang_code = filename[:-5]
-        filepath = os.path.join(locale_dir, filename)
-        try:
-            with open(filepath, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            display_name = data.pop("_name", lang_code)
-            if lang_code not in lang_dict:
-                lang_dict[lang_code] = {"name": display_name, "values": {}}
-            lang_dict[lang_code]["values"].update(data)
-            logger.info("Loaded locale '%s' (%s)", lang_code, display_name)
-        except Exception as exc:
-            logger.warning("Failed to load locale '%s': %s", filename, exc)
-
-
 def initialize(rhapi: RHAPI.RHAPI):
-
-    _load_locale(rhapi)
 
     controller = ELRSBackpack("elrs", "ELRS", rhapi)
 
@@ -58,45 +26,45 @@ def initialize(rhapi: RHAPI.RHAPI):
     #
 
     elrs_bindphrase = UIField(
-        name="comm_elrs", label="ELRS BP Bind Phrase", field_type=UIFieldType.TEXT
+        name="comm_elrs", label="ELRS BP バインドフレーズ", field_type=UIFieldType.TEXT
     )
     rhapi.fields.register_pilot_attribute(elrs_bindphrase)
 
-    active = UIField("elrs_active", "Enable ELRS OSD", field_type=UIFieldType.CHECKBOX)
+    active = UIField("elrs_active", "ELRS OSD を有効にする", field_type=UIFieldType.CHECKBOX)
     rhapi.fields.register_pilot_attribute(active)
 
     rhapi.ui.register_panel(
-        "elrs_settings", "ELRS Backpack General Settings", "settings", order=0
+        "elrs_settings", "ELRS バックパック 一般設定", "settings", order=0
     )
 
     rhapi.ui.register_panel(
-        "elrs_vrxc", "ELRS Backpack OSD Settings", "settings", order=0
+        "elrs_vrxc", "ELRS バックパック OSD 設定", "settings", order=0
     )
 
     #
-    # Check Boxes
+    # チェックボックス
     #
 
     _race_start = UIField(
         "_race_start",
-        "Start Race from Transmitter",
-        desc="Allows the race director to remotely start races",
+        "送信機からレースを開始",
+        desc="レースディレクターが送信機からレースを開始できます",
         field_type=UIFieldType.CHECKBOX,
     )
     rhapi.fields.register_option(_race_start, "elrs_settings")
 
     _race_stop = UIField(
         "_race_stop",
-        "Stop Race from Transmitter",
-        desc="Allows the race director to remotely stop races",
+        "送信機からレースを停止",
+        desc="レースディレクターが送信機からレースを停止できます",
         field_type=UIFieldType.CHECKBOX,
     )
     rhapi.fields.register_option(_race_stop, "elrs_settings")
 
     _autosave_on_stop = UIField(
         "_autosave_on_stop",
-        "Autosave on stop",
-        desc="Automatically save the race when stopping from the transmitter",
+        "停止時に自動保存",
+        desc="送信機から停止した際にレースを自動保存します",
         field_type=UIFieldType.CHECKBOX,
         value="0",
     )
@@ -104,8 +72,8 @@ def initialize(rhapi: RHAPI.RHAPI):
 
     _socket_ip = UIField(
         "_socket_ip",
-        "ELRS Netpack Address",
-        desc="Hostanme or IP Address of the ELRS Netpack",
+        "ELRS Netpack アドレス",
+        desc="ELRS Netpack のホスト名または IP アドレス",
         value="elrs-netpack.local",
         field_type=UIFieldType.TEXT,
     )
@@ -118,8 +86,8 @@ def initialize(rhapi: RHAPI.RHAPI):
 
     _conn_opt = UIField(
         "_conn_opt",
-        "Backback Connection Type",
-        desc="Select the type of connection to use for the backpack",
+        "バックパック接続タイプ",
+        desc="バックパックの接続タイプを選択します",
         field_type=UIFieldType.SELECT,
         options=conn_opts,
     )
@@ -127,68 +95,68 @@ def initialize(rhapi: RHAPI.RHAPI):
 
     _heat_name = UIField(
         "_heat_name",
-        "Show Heat Name",
-        desc="Show the heat's name on start",
+        "ヒート名を表示",
+        desc="スタート時にヒート名を表示します",
         field_type=UIFieldType.CHECKBOX,
     )
     rhapi.fields.register_option(_heat_name, "elrs_vrxc")
 
     _round_num = UIField(
         "_round_num",
-        "Show Round Number",
-        desc="Show round number on start",
+        "ラウンド番号を表示",
+        desc="スタート時にラウンド番号を表示します",
         field_type=UIFieldType.CHECKBOX,
     )
     rhapi.fields.register_option(_round_num, "elrs_vrxc")
 
     _class_name = UIField(
         "_class_name",
-        "Show Class Name",
-        desc="Show the class's name on start",
+        "クラス名を表示",
+        desc="スタート時にクラス名を表示します",
         field_type=UIFieldType.CHECKBOX,
     )
     rhapi.fields.register_option(_class_name, "elrs_vrxc")
 
     _event_name = UIField(
         "_event_name",
-        "Show Event Name",
-        desc="Show the event's name on start",
+        "イベント名を表示",
+        desc="スタート時にイベント名を表示します",
         field_type=UIFieldType.CHECKBOX,
     )
     rhapi.fields.register_option(_event_name, "elrs_vrxc")
 
     _position_mode = UIField(
         "_position_mode",
-        "Show Current Position and Lap",
-        desc="off - only shows current lap",
+        "現在の順位とラップを表示",
+        desc="オフ時は現在のラップのみ表示",
         field_type=UIFieldType.CHECKBOX,
     )
     rhapi.fields.register_option(_position_mode, "elrs_vrxc")
 
     _gap_mode = UIField(
         "_gap_mode",
-        "Show Gap Time",
-        desc="off - shows lap time",
+        "ギャップタイムを表示",
+        desc="オフ時はラップタイムを表示",
         field_type=UIFieldType.CHECKBOX,
     )
     rhapi.fields.register_option(_gap_mode, "elrs_vrxc")
 
     _results_mode = UIField(
         "_results_mode",
-        "Show Post-Race Results",
-        desc="Show pilot's results upon race completion",
+        "レース後の結果を表示",
+        desc="レース終了時にパイロットの結果を表示します",
         field_type=UIFieldType.CHECKBOX,
     )
     rhapi.fields.register_option(_results_mode, "elrs_vrxc")
 
     #
-    # Text Fields
+    # テキストフィールド
     #
 
     _racestage_message = UIField(
         "_racestage_message",
-        "Race Stage Message",
-        desc="lowercase letters are symbols",
+        "ステージングメッセージ",
+        desc="小文字はシンボルとして使用されます",
         field_type=UIFieldType.TEXT,
         value="w ARM NOW x",
     )
@@ -196,8 +164,8 @@ def initialize(rhapi: RHAPI.RHAPI):
 
     _racestart_message = UIField(
         "_racestart_message",
-        "Race Start Message",
-        desc="lowercase letters are symbols",
+        "レーススタートメッセージ",
+        desc="小文字はシンボルとして使用されます",
         field_type=UIFieldType.TEXT,
         value="w   GO!   x",
     )
@@ -205,8 +173,8 @@ def initialize(rhapi: RHAPI.RHAPI):
 
     _pilotdone_message = UIField(
         "_pilotdone_message",
-        "Pilot Done Message",
-        desc="lowercase letters are symbols",
+        "パイロット完了メッセージ",
+        desc="小文字はシンボルとして使用されます",
         field_type=UIFieldType.TEXT,
         value="w FINISHED! x",
     )
@@ -214,8 +182,8 @@ def initialize(rhapi: RHAPI.RHAPI):
 
     _racefinish_message = UIField(
         "_racefinish_message",
-        "Race Finish Message",
-        desc="lowercase letters are symbols",
+        "レース終了メッセージ",
+        desc="小文字はシンボルとして使用されます",
         field_type=UIFieldType.TEXT,
         value="w FINISH LAP! x",
     )
@@ -223,8 +191,8 @@ def initialize(rhapi: RHAPI.RHAPI):
 
     _racestop_message = UIField(
         "_racestop_message",
-        "Race Stop Message",
-        desc="lowercase letters are symbols",
+        "レース停止メッセージ",
+        desc="小文字はシンボルとして使用されます",
         field_type=UIFieldType.TEXT,
         value="w  LAND NOW!  x",
     )
@@ -232,21 +200,21 @@ def initialize(rhapi: RHAPI.RHAPI):
 
     _leader_message = UIField(
         "_leader_message",
-        "Race Leader Message",
-        desc="lowercase letters are symbols",
+        "レースリーダーメッセージ",
+        desc="小文字はシンボルとして使用されます",
         field_type=UIFieldType.TEXT,
         value="RACE LEADER",
     )
     rhapi.fields.register_option(_leader_message, "elrs_vrxc")
 
     #
-    # Basic Integers
+    # 数値フィールド
     #
 
     _racestart_uptime = UIField(
         "_racestart_uptime",
-        "Start Message Uptime",
-        desc="decaseconds",
+        "スタートメッセージ表示時間",
+        desc="デカ秒（×0.1秒）",
         field_type=UIFieldType.BASIC_INT,
         value=5,
     )
@@ -254,8 +222,8 @@ def initialize(rhapi: RHAPI.RHAPI):
 
     _finish_uptime = UIField(
         "_finish_uptime",
-        "Finish Message Uptime",
-        desc="decaseconds",
+        "終了メッセージ表示時間",
+        desc="デカ秒（×0.1秒）",
         field_type=UIFieldType.BASIC_INT,
         value=20,
     )
@@ -263,8 +231,8 @@ def initialize(rhapi: RHAPI.RHAPI):
 
     _results_uptime = UIField(
         "_results_uptime",
-        "Lap Result Uptime",
-        desc="decaseconds",
+        "ラップ結果表示時間",
+        desc="デカ秒（×0.1秒）",
         field_type=UIFieldType.BASIC_INT,
         value=40,
     )
@@ -272,8 +240,8 @@ def initialize(rhapi: RHAPI.RHAPI):
 
     _announcement_uptime = UIField(
         "_announcement_uptime",
-        "Announcement Uptime",
-        desc="decaseconds",
+        "アナウンス表示時間",
+        desc="デカ秒（×0.1秒）",
         field_type=UIFieldType.BASIC_INT,
         value=50,
     )
@@ -281,8 +249,8 @@ def initialize(rhapi: RHAPI.RHAPI):
 
     _heatname_row = UIField(
         "_heatname_row",
-        "Heat Name Row",
-        desc="Use rows between 0-17",
+        "ヒート名の行",
+        desc="0〜17 の行を指定",
         field_type=UIFieldType.BASIC_INT,
         value=2,
     )
@@ -290,8 +258,8 @@ def initialize(rhapi: RHAPI.RHAPI):
 
     _classname_row = UIField(
         "_classname_row",
-        "Class Name Row",
-        desc="Use rows between 0-17",
+        "クラス名の行",
+        desc="0〜17 の行を指定",
         field_type=UIFieldType.BASIC_INT,
         value=1,
     )
@@ -299,8 +267,8 @@ def initialize(rhapi: RHAPI.RHAPI):
 
     _eventname_row = UIField(
         "_eventname_row",
-        "Event Name Row",
-        desc="Use rows between 0-17",
+        "イベント名の行",
+        desc="0〜17 の行を指定",
         field_type=UIFieldType.BASIC_INT,
         value=0,
     )
@@ -308,8 +276,8 @@ def initialize(rhapi: RHAPI.RHAPI):
 
     _announcement_row = UIField(
         "_announcement_row",
-        "Announcement Row",
-        desc="Use rows between 0-17",
+        "アナウンスの行",
+        desc="0〜17 の行を指定",
         field_type=UIFieldType.BASIC_INT,
         value=3,
     )
@@ -317,8 +285,8 @@ def initialize(rhapi: RHAPI.RHAPI):
 
     _status_row = UIField(
         "_status_row",
-        "Race Status Row",
-        desc="Use rows between 0-17",
+        "レースステータスの行",
+        desc="0〜17 の行を指定",
         field_type=UIFieldType.BASIC_INT,
         value=5,
     )
@@ -326,8 +294,8 @@ def initialize(rhapi: RHAPI.RHAPI):
 
     _currentlap_row = UIField(
         "_currentlap_row",
-        "Current Lap/Position Row",
-        desc="Use rows between 0-17",
+        "現在のラップ/順位の行",
+        desc="0〜17 の行を指定",
         field_type=UIFieldType.BASIC_INT,
         value=0,
     )
@@ -335,8 +303,8 @@ def initialize(rhapi: RHAPI.RHAPI):
 
     _lapresults_row = UIField(
         "_lapresults_row",
-        "Lap/Gap Results Row",
-        desc="Use rows between 0-17",
+        "ラップ/ギャップ結果の行",
+        desc="0〜17 の行を指定",
         field_type=UIFieldType.BASIC_INT,
         value=15,
     )
@@ -344,39 +312,39 @@ def initialize(rhapi: RHAPI.RHAPI):
 
     _results_row = UIField(
         "_results_row",
-        "Results Rows",
-        desc="Use rows between 0-16. Uses two rows.",
+        "結果の行",
+        desc="0〜16 の行を指定（2行使用）",
         field_type=UIFieldType.BASIC_INT,
         value=13,
     )
     rhapi.fields.register_option(_results_row, "elrs_vrxc")
 
     #
-    # Quick Buttons
+    # ボタン
     #
 
     rhapi.ui.register_quickbutton(
         "elrs_settings",
         "bp_connect",
-        "Backpack Connect",
+        "バックパック接続",
         controller.start_connection,
     )
     rhapi.ui.register_quickbutton(
         "elrs_settings",
         "bp_disconnect",
-        "Backpack Disconnect",
+        "バックパック切断",
         controller.disconnect,
     )
     rhapi.ui.register_quickbutton(
-        "elrs_settings", "enable_bind", "Start Backpack Bind", controller.activate_bind
+        "elrs_settings", "enable_bind", "バックパックバインド開始", controller.activate_bind
     )
 
     rhapi.ui.register_quickbutton(
         "elrs_settings",
         "test_osd",
-        "Test Bound Backpack's OSD",
+        "バインド済みバックパックの OSD テスト",
         controller.test_bind_osd,
     )
     rhapi.ui.register_quickbutton(
-        "elrs_settings", "enable_wifi", "Start Backpack WiFi", controller.activate_wifi
+        "elrs_settings", "enable_wifi", "バックパック WiFi 起動", controller.activate_wifi
     )
