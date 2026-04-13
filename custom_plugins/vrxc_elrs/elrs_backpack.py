@@ -696,7 +696,7 @@ class ELRSBackpack(VRxController):
                     message = f"x {formatted_time1} | {gap_info.current.consecutives_base}/{formatted_time2} w"
                 elif (
                     gap_info.race.win_condition == WinCondition.FASTEST_LAP
-                    and gap_info.current.is_best
+                    and gap_info.current.is_best_lap
                 ):
                     formatted_time = self._rhapi.utils.format_split_time_to_str(
                         gap_info.current.last_lap_time, "{m}:{s}.{d}"
