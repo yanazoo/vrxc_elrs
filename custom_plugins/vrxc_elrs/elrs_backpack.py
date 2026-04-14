@@ -712,7 +712,7 @@ class ELRSBackpack(VRxController):
                     formatted_time2 = self._rhapi.utils.format_split_time_to_str(
                         gap_info.current.total_time_laps, "{m}:{s}.{d}"
                     )
-                    message = f"x {formatted_time1} | {formatted_time2} w"
+                    message = f"x {formatted_time2} | {formatted_time1} w"
                 else:
                     # Lap timer only (MOST_LAPS / NONE) - show single lap time
                     formatted_time = self._rhapi.utils.format_split_time_to_str(
