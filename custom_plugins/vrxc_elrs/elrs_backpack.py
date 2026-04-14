@@ -250,6 +250,23 @@ class ELRSBackpack(VRxController):
         col = 50 // 2 - offset
         return max(col, 0)
 
+    def _get_col(self, text: str, col_option: str) -> int:
+        """
+        Returns the column position for OSD text.
+        If the option value is negative, auto-centers the text.
+
+        :param text: The text to display
+        :param col_option: The option key for the column setting
+        :return: Column position (0-49)
+        """
+        try:
+            col = int(self._rhapi.db.option(col_option))
+        except (TypeError, ValueError):
+            col = -1
+        if col < 0:
+            return self.center_osd(len(text))
+        return col
+
     def send_msp(self, msp: MSPPacket) -> None:
         """
         Sends a MSP packet to the backpack connection
@@ -471,11 +488,11 @@ class ELRSBackpack(VRxController):
             heat_message = (
                 f"x {heat_name.upper()} | {round_trans.upper()} {round_num} w"
             )
-            heat_start_col = self.center_osd(len(heat_message))
+            heat_start_col = self._get_col(heat_message, "_heatname_col")
             heat_message_parms = (heat_name_row, heat_start_col, heat_message)
         elif use_heat_name and heat_name:
             heat_message = f"x {heat_name.upper()} w"
-            heat_start_col = self.center_osd(len(heat_message))
+            heat_start_col = self._get_col(heat_message, "_heatname_col")
             heat_message_parms = (heat_name_row, heat_start_col, heat_message)
         else:
             heat_message_parms = None
@@ -484,7 +501,7 @@ class ELRSBackpack(VRxController):
         class_name_row = self._rhapi.db.option("_classname_row")
         if use_class_name and class_name:
             class_message = f"x {class_name.upper()} w"
-            class_start_col = self.center_osd(len(class_message))
+            class_start_col = self._get_col(class_message, "_classname_col")
             class_message_parms = (class_name_row, class_start_col, class_message)
 
         # Generate event message
@@ -493,10 +510,11 @@ class ELRSBackpack(VRxController):
         if use_event_name and event_name:
             event_name = self._rhapi.db.option("eventName")
             event_message = heat_message = f"x {event_name.upper()} w"
-            event_start_col = self.center_osd(len(heat_message))
+            event_start_col = self._get_col(event_message, "_eventname_col")
             event_message_parms = (event_name_row, event_start_col, event_message)
 
-        start_col = self.center_osd(len(self._rhapi.db.option("_racestage_message")))
+        _stage_msg = self._rhapi.db.option("_racestage_message")
+        start_col = self._get_col(_stage_msg, "_status_col")
         stage_mesage = (
             self._rhapi.db.option("_status_row"),
             start_col,
@@ -540,8 +558,8 @@ class ELRSBackpack(VRxController):
 
         def start(pilot_id):
             uid = self.get_pilot_uid(pilot_id)
-            start_col = self.center_osd(
-                len(self._rhapi.db.option("_racestart_message"))
+            start_col = self._get_col(
+                self._rhapi.db.option("_racestart_message"), "_status_col"
             )
 
             self._queue_lock.acquire()
@@ -584,8 +602,8 @@ class ELRSBackpack(VRxController):
 
         def finish(pilot_id):
             uid = self.get_pilot_uid(pilot_id)
-            start_col = self.center_osd(
-                len(self._rhapi.db.option("_racefinish_message"))
+            start_col = self._get_col(
+                self._rhapi.db.option("_racefinish_message"), "_status_col"
             )
 
             self._queue_lock.acquire()
@@ -629,7 +647,7 @@ class ELRSBackpack(VRxController):
 
         def land(pilot_id):
             uid = self.get_pilot_uid(pilot_id)
-            start_col = self.center_osd(len(self._rhapi.db.option("_racestop_message")))
+            start_col = self._get_col(self._rhapi.db.option("_racestop_message"), "_status_col")
 
             self._queue_lock.acquire()
             self.set_send_uid(uid)
@@ -667,7 +685,7 @@ class ELRSBackpack(VRxController):
                 message = f"LAP: {result['laps'] + 1}"
             else:
                 message = f"POSN: {str(result['position']).upper()} | LAP: {result['laps'] + 1}"
-            start_col = self.center_osd(len(message))
+            start_col = self._get_col(message, "_currentlap_col")
 
             uid = self.get_pilot_uid(pilot_id)
             self._queue_lock.acquire()
@@ -772,7 +790,7 @@ class ELRSBackpack(VRxController):
                         )
                         message = f"x {formatted_time} w"
 
-            start_col = self.center_osd(len(message))
+            start_col = self._get_col(message, "_lapresults_col")
 
             uid = self.get_pilot_uid(pilot_id)
             self._queue_lock.acquire()
@@ -848,8 +866,8 @@ class ELRSBackpack(VRxController):
 
         def done(result, win_condition):
             pilot_id = result["pilot_id"]
-            start_col = self.center_osd(
-                len(self._rhapi.db.option("_pilotdone_message"))
+            start_col = self._get_col(
+                self._rhapi.db.option("_pilotdone_message"), "_status_col"
             )
             results_row1 = self._rhapi.db.option("_results_row")
             results_row2 = results_row1 + 1
@@ -867,7 +885,7 @@ class ELRSBackpack(VRxController):
 
             if self._rhapi.db.option("_results_mode") == "1":
                 placement_message = f"PLACEMENT: {result['position']}"
-                place_col = self.center_osd(len(placement_message))
+                place_col = self._get_col(placement_message, "_results_col")
                 self.send_osd_text(results_row1, place_col, placement_message)
 
                 if win_condition == WinCondition.FASTEST_CONSECUTIVE:
@@ -879,7 +897,7 @@ class ELRSBackpack(VRxController):
                 else:
                     win_message = f"LAPS COMPLETED: {result['laps']}"
 
-                win_col = self.center_osd(len(win_message))
+                win_col = self._get_col(win_message, "_results_col")
                 self.send_osd_text(results_row2, win_col, win_message)
 
             self.send_display_osd()
@@ -944,7 +962,7 @@ class ELRSBackpack(VRxController):
 
         def notify(pilot):
             uid = self.get_pilot_uid(pilot)
-            start_col = self.center_osd(len(args["message"]))
+            start_col = self._get_col(args["message"], "_announcement_col")
             self._queue_lock.acquire()
             self.set_send_uid(uid)
             self.send_osd_text(

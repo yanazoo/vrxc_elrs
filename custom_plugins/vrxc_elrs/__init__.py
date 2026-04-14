@@ -320,6 +320,82 @@ def initialize(rhapi: RHAPI.RHAPI):
     rhapi.fields.register_option(_results_row, "elrs_vrxc")
 
     #
+    # 列位置（-1 = 自動センタリング、0〜49 = 手動指定）
+    #
+
+    _heatname_col = UIField(
+        "_heatname_col",
+        "ヒート名の列",
+        desc="-1=自動センタリング、0〜49=手動指定",
+        field_type=UIFieldType.BASIC_INT,
+        value=-1,
+    )
+    rhapi.fields.register_option(_heatname_col, "elrs_vrxc")
+
+    _classname_col = UIField(
+        "_classname_col",
+        "クラス名の列",
+        desc="-1=自動センタリング、0〜49=手動指定",
+        field_type=UIFieldType.BASIC_INT,
+        value=-1,
+    )
+    rhapi.fields.register_option(_classname_col, "elrs_vrxc")
+
+    _eventname_col = UIField(
+        "_eventname_col",
+        "イベント名の列",
+        desc="-1=自動センタリング、0〜49=手動指定",
+        field_type=UIFieldType.BASIC_INT,
+        value=-1,
+    )
+    rhapi.fields.register_option(_eventname_col, "elrs_vrxc")
+
+    _announcement_col = UIField(
+        "_announcement_col",
+        "アナウンスの列",
+        desc="-1=自動センタリング、0〜49=手動指定",
+        field_type=UIFieldType.BASIC_INT,
+        value=-1,
+    )
+    rhapi.fields.register_option(_announcement_col, "elrs_vrxc")
+
+    _status_col = UIField(
+        "_status_col",
+        "レースステータスの列",
+        desc="-1=自動センタリング、0〜49=手動指定",
+        field_type=UIFieldType.BASIC_INT,
+        value=-1,
+    )
+    rhapi.fields.register_option(_status_col, "elrs_vrxc")
+
+    _currentlap_col = UIField(
+        "_currentlap_col",
+        "現在のラップ/順位の列",
+        desc="-1=自動センタリング、0〜49=手動指定",
+        field_type=UIFieldType.BASIC_INT,
+        value=-1,
+    )
+    rhapi.fields.register_option(_currentlap_col, "elrs_vrxc")
+
+    _lapresults_col = UIField(
+        "_lapresults_col",
+        "ラップ/ギャップ結果の列",
+        desc="-1=自動センタリング、0〜49=手動指定",
+        field_type=UIFieldType.BASIC_INT,
+        value=-1,
+    )
+    rhapi.fields.register_option(_lapresults_col, "elrs_vrxc")
+
+    _results_col = UIField(
+        "_results_col",
+        "結果の列",
+        desc="-1=自動センタリング、0〜49=手動指定",
+        field_type=UIFieldType.BASIC_INT,
+        value=-1,
+    )
+    rhapi.fields.register_option(_results_col, "elrs_vrxc")
+
+    #
     # ボタン
     #
 
