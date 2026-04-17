@@ -1,8 +1,8 @@
 #!/bin/bash
 # vrxc_elrs インストール / アップデートスクリプト
 # 使い方:
-#   curl -fsSL https://raw.githubusercontent.com/yanazoo/vrxc_elrs/master/tools/install.sh | bash
-#   wget -qO- https://raw.githubusercontent.com/yanazoo/vrxc_elrs/master/tools/install.sh | bash
+#   bash <(curl -fsSL https://raw.githubusercontent.com/yanazoo/vrxc_elrs/master/tools/install.sh)
+#   bash <(wget -qO- https://raw.githubusercontent.com/yanazoo/vrxc_elrs/master/tools/install.sh)
 
 set -e
 
@@ -16,7 +16,18 @@ echo "================================================"
 echo ""
 
 # -------------------------------------------------------
-# インストール先の検出（固定パスのみ・find なし）
+# sudo をターミナルから実行（パイプ経由でも動作）
+# -------------------------------------------------------
+run_sudo() {
+    if [ "$(id -u)" = "0" ]; then
+        "$@"
+    else
+        sudo "$@" </dev/tty
+    fi
+}
+
+# -------------------------------------------------------
+# インストール先の検出（固定パスのみ）
 # -------------------------------------------------------
 INSTALL_BASE=""
 
@@ -80,7 +91,7 @@ echo ""
 # -------------------------------------------------------
 SERVICE=""
 for svc in rotorhazard rhserver; do
-    if systemctl list-units --type=service 2>/dev/null | grep -q "$svc"; then
+    if systemctl is-active --quiet "$svc" 2>/dev/null || systemctl is-enabled --quiet "$svc" 2>/dev/null; then
         SERVICE="$svc"
         break
     fi
@@ -88,7 +99,7 @@ done
 
 if [ -n "$SERVICE" ]; then
     echo "RotorHazard を再起動中... ($SERVICE)"
-    sudo systemctl restart "$SERVICE"
+    run_sudo systemctl restart "$SERVICE"
     echo "再起動完了！"
 else
     echo "注意: RotorHazard サービスが見つかりませんでした。"
