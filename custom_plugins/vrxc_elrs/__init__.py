@@ -93,6 +93,24 @@ def initialize(rhapi: RHAPI.RHAPI):
     )
     rhapi.fields.register_option(_conn_opt, "elrs_settings")
 
+    _auto_reconnect = UIField(
+        "_auto_reconnect",
+        "自動再接続",
+        desc="バックパックが切れたときに自動的に再接続を試みます",
+        field_type=UIFieldType.CHECKBOX,
+        value="1",
+    )
+    rhapi.fields.register_option(_auto_reconnect, "elrs_settings")
+
+    _reconnect_interval = UIField(
+        "_reconnect_interval",
+        "再接続間隔（秒）",
+        desc="自動再接続を試みる間隔（3秒以上）",
+        field_type=UIFieldType.BASIC_INT,
+        value=10,
+    )
+    rhapi.fields.register_option(_reconnect_interval, "elrs_settings")
+
     _heat_name = UIField(
         "_heat_name",
         "ヒート名を表示",

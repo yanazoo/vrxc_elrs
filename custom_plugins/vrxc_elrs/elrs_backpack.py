@@ -20,6 +20,7 @@ class CancelError(BaseException): ...
 
 class ELRSBackpack(VRxController):
     _connection: BackpackConnection | None = None
+    _reconnect_greenlet: gevent.Greenlet | None = None
 
     def __init__(self, name, label, rhapi):
         super().__init__(name, label)
@@ -27,6 +28,8 @@ class ELRSBackpack(VRxController):
         self._send_queue = Queue()
         self._recieve_queue = Queue(maxsize=100)
         self._queue_lock = gevent.lock.RLock()
+        self._manual_disconnect = True
+        self._last_sent_osd: dict[int, dict[str, str]] = {}
 
     @property
     def _backpack_connected(self) -> bool:
@@ -75,24 +78,37 @@ class ELRSBackpack(VRxController):
 
     def start_connection(self, *_) -> None:
         """
-        Starts the connection loop
+        Starts the connection loop (user-initiated)
+        """
+        self._manual_disconnect = False
+        self._attempt_connect(notify=True)
+        self._start_reconnect_monitor()
+
+    def _attempt_connect(self, notify: bool = True) -> bool:
+        """
+        Attempt to establish a backpack connection.
+
+        :param notify: Whether to show UI messages (False during auto-reconnect)
+        :return: True on successful connection
         """
         if self._backpack_connected:
-            message = "バックパックはすでに接続されています"
-            self._rhapi.ui.message_notify(self._rhapi.language.__(message))
-            return
+            if notify:
+                message = "バックパックはすでに接続されています"
+                self._rhapi.ui.message_notify(self._rhapi.language.__(message))
+            return True
 
         id_ = self._rhapi.db.option("_conn_opt", None, as_int=True)
         for con in ConnectionTypeEnum:
             if id_ == con.id_:
                 break
         else:
-            message = "接続タイプが指定されていません"
-            self._rhapi.ui.message_notify(self._rhapi.language.__(message))
-            return
+            if notify:
+                message = "接続タイプが指定されていません"
+                self._rhapi.ui.message_notify(self._rhapi.language.__(message))
+            return False
 
         if con == ConnectionTypeEnum.USB:
-            self._establish_connection(con.type_)
+            return self._establish_connection(con.type_, notify=notify)
 
         elif con == ConnectionTypeEnum.ONBOARD:
             if RH_GPIO.is_real_hw_GPIO():
@@ -105,49 +121,103 @@ class ELRSBackpack(VRxController):
                 RH_GPIO.output(11, RH_GPIO.LOW)
                 gevent.sleep()
                 RH_GPIO.output(11, RH_GPIO.HIGH)
-
-                self._establish_connection(con.type_)
-
+                return self._establish_connection(con.type_, notify=notify)
             else:
-                message = "Raspberry Pi 上で動作していません"
-                self._rhapi.ui.message_notify(self._rhapi.language.__(message))
+                if notify:
+                    message = "Raspberry Pi 上で動作していません"
+                    self._rhapi.ui.message_notify(self._rhapi.language.__(message))
+                return False
 
         elif con == ConnectionTypeEnum.SOCKET:
             addr = self._rhapi.db.option("_socket_ip", None)
-            if addr is not None:
-                try:
-                    ip_addr = socket.gethostbyname(addr)
-                except socket.gaierror:
+            if addr is None:
+                if notify:
+                    message = "ソケットの IP アドレスが指定されていません"
+                    self._rhapi.ui.message_notify(self._rhapi.language.__(message))
+                return False
+            try:
+                ip_addr = socket.gethostbyname(addr)
+            except socket.gaierror:
+                if notify:
                     message = "デバイスのソケットへの接続に失敗しました"
                     self._rhapi.ui.message_notify(self._rhapi.language.__(message))
-                else:
-                    self._establish_connection(con.type_, ip_addr=ip_addr)
-            else:
-                message = "ソケットの IP アドレスが指定されていません"
-                self._rhapi.ui.message_notify(self._rhapi.language.__(message))
+                return False
+            return self._establish_connection(
+                con.type_, ip_addr=ip_addr, notify=notify
+            )
+
+        return False
 
     def _establish_connection(
-        self, connection_type: type[BackpackConnection], **kwargs
-    ):
+        self,
+        connection_type: type[BackpackConnection],
+        notify: bool = True,
+        **kwargs,
+    ) -> bool:
         """
         Setup the backpack connection
 
         :param connection_type: The type of connection to use
+        :param notify: Whether to show UI messages
+        :return: True on successful connection
         """
         # Clear data in send queue
         while not self._send_queue.empty():
             self._send_queue.get()
 
+        # Clear OSD dedupe state so reconnect re-sends current info
+        self._last_sent_osd.clear()
+
         self._connection = connection_type(self._send_queue, self._recieve_queue)
         if not self._connection.connect(**kwargs):
-            message = "バックパック接続の確立に失敗しました"
-            self._rhapi.ui.message_notify(self._rhapi.language.__(message))
-            return
+            if notify:
+                message = "バックパック接続の確立に失敗しました"
+                self._rhapi.ui.message_notify(self._rhapi.language.__(message))
+            return False
 
         message = "バックパックへの接続に成功しました"
-        self._rhapi.ui.message_notify(self._rhapi.language.__(message))
+        if notify:
+            self._rhapi.ui.message_notify(self._rhapi.language.__(message))
+        else:
+            logger.info(message)
+            self._rhapi.ui.message_notify(
+                self._rhapi.language.__("バックパックへ自動再接続しました")
+            )
 
         self.version_request()
+        return True
+
+    def _start_reconnect_monitor(self) -> None:
+        """
+        Start the auto-reconnect monitor greenlet if not already running
+        """
+        if self._reconnect_greenlet is None or self._reconnect_greenlet.dead:
+            self._reconnect_greenlet = gevent.spawn(self._reconnect_loop)
+            logger.info("Auto-reconnect monitor started")
+
+    def _reconnect_loop(self) -> None:
+        """
+        Monitor the connection and reconnect automatically if it drops
+        """
+        while True:
+            try:
+                interval = int(self._rhapi.db.option("_reconnect_interval") or 10)
+            except (TypeError, ValueError):
+                interval = 10
+            gevent.sleep(max(interval, 3))
+
+            if self._manual_disconnect:
+                continue
+            if self._rhapi.db.option("_auto_reconnect") != "1":
+                continue
+            if self._backpack_connected:
+                continue
+
+            logger.info("バックパック接続が切れました。再接続を試行します...")
+            try:
+                self._attempt_connect(notify=False)
+            except Exception:
+                logger.exception("再接続中にエラーが発生しました")
 
     def recieve_loop(self) -> None:
         """
@@ -181,8 +251,14 @@ class ELRSBackpack(VRxController):
 
     def disconnect(self, *_) -> None:
         """
-        Disconnect the connection loop
+        Disconnect the connection loop (user-initiated)
         """
+        self._manual_disconnect = True
+
+        if self._reconnect_greenlet is not None:
+            self._reconnect_greenlet.kill()
+            self._reconnect_greenlet = None
+
         if not self._backpack_connected:
             message = "バックパックが接続されていません"
             self._rhapi.ui.message_notify(self._rhapi.language.__(message))
@@ -685,6 +761,13 @@ class ELRSBackpack(VRxController):
                 message = f"LAP: {result['laps'] + 1}"
             else:
                 message = f"POSN: {str(result['position']).upper()} | LAP: {result['laps'] + 1}"
+
+            # Skip if OSD for this pilot already shows this exact message
+            last = self._last_sent_osd.setdefault(pilot_id, {})
+            if last.get("pos") == message:
+                return
+            last["pos"] = message
+
             start_col = self._get_col(message, "_currentlap_col")
 
             uid = self.get_pilot_uid(pilot_id)

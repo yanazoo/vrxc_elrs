@@ -75,5 +75,10 @@
     "Turning on backpack's wifi...": "バックパックの WiFi を起動中...",
     "Backpack not connected": "バックパックが接続されていません",
     "Backpack disconnected": "バックパックが切断されました",
+    "Backpack auto-reconnected": "バックパックへ自動再接続しました",
+    "Auto Reconnect": "自動再接続",
+    "Automatically reconnect when the backpack connection drops": "バックパックが切れたときに自動的に再接続を試みます",
+    "Reconnect Interval (seconds)": "再接続間隔（秒）",
+    "Interval between auto-reconnect attempts (minimum 3)": "自動再接続を試みる間隔（3秒以上）",
     "Round": "ラウンド"
 }

@@ -254,7 +254,7 @@ class SocketConnection:
                     self._socket.sendall(packet.get_packet())
                 finally:
                     timeout.close()
-        except gevent._socketcommon.cancel_wait_ex:
+        except (gevent._socketcommon.cancel_wait_ex, OSError, gevent.Timeout):
             ...
 
         finally:
@@ -269,9 +269,11 @@ class SocketConnection:
         try:
             while self._connected:
                 data = self._socket.recv(128)
+                if not data:
+                    break
                 for packet in MSPPacket.packets_from_bytes(data):
                     self._recieve_queue.put(packet)
-        except gevent._socketcommon.cancel_wait_ex:
+        except (gevent._socketcommon.cancel_wait_ex, OSError):
             ...
 
         finally:
