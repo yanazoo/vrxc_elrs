@@ -768,6 +768,14 @@ class ELRSBackpack(VRxController):
                 return
             last["pos"] = message
 
+            # Delay before sending OSD to allow timer hardware to settle after lap
+            try:
+                delay = int(self._rhapi.db.option("_osd_lap_delay") or 0) * 1e-1
+            except (TypeError, ValueError):
+                delay = 0
+            if delay > 0:
+                gevent.sleep(delay)
+
             start_col = self._get_col(message, "_currentlap_col")
 
             uid = self.get_pilot_uid(pilot_id)
