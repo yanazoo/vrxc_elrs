@@ -229,15 +229,6 @@ def initialize(rhapi: RHAPI.RHAPI):
     # 数値フィールド
     #
 
-    _osd_lap_delay = UIField(
-        "_osd_lap_delay",
-        "ラップ後 OSD 送信遅延",
-        desc="デカ秒（×0.1秒）。ラップ検出直後の OSD 送信を遅らせてノイズ干渉を軽減",
-        field_type=UIFieldType.BASIC_INT,
-        value=3,
-    )
-    rhapi.fields.register_option(_osd_lap_delay, "elrs_vrxc")
-
     _racestart_uptime = UIField(
         "_racestart_uptime",
         "スタートメッセージ表示時間",
