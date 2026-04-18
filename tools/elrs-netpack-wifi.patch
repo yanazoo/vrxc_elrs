@@ -1,0 +1,271 @@
+diff --git a/components/espnow_server/Kconfig.projbuild b/components/espnow_server/Kconfig.projbuild
+index 1d8fc6a..a3c676f 100644
+--- a/components/espnow_server/Kconfig.projbuild
++++ b/components/espnow_server/Kconfig.projbuild
+@@ -11,7 +11,7 @@ menu "ESPNOW Server options"
+         default 0
+         help
+             The amount of artifical delay between sending
+-            ESPNOW messages 
++            ESPNOW messages
+ 
+     config ESPNOW_CHANNEL
+         int "Channel"
+@@ -19,4 +19,45 @@ menu "ESPNOW Server options"
+         range 0 14
+         help
+             The channel on which sending and receiving ESPNOW data.
+-endmenu
+\ No newline at end of file
++
++    config ESPNOW_DEFAULT_UID_ENABLE
++        bool "Use default UID when NVS is empty"
++        default n
++        help
++            If enabled, use the UID defined below when NVS has no saved address.
++            Useful when RotorHazard does not send MSP_ELRS_SET_SEND_UID on connect.
++            Set each byte to the backpack UID (MAC address) in decimal (0-255).
++
++    if ESPNOW_DEFAULT_UID_ENABLE
++        config ESPNOW_DEFAULT_UID_B0
++            int "UID Byte 0"
++            default 0
++            range 0 255
++
++        config ESPNOW_DEFAULT_UID_B1
++            int "UID Byte 1"
++            default 0
++            range 0 255
++
++        config ESPNOW_DEFAULT_UID_B2
++            int "UID Byte 2"
++            default 0
++            range 0 255
++
++        config ESPNOW_DEFAULT_UID_B3
++            int "UID Byte 3"
++            default 0
++            range 0 255
++
++        config ESPNOW_DEFAULT_UID_B4
++            int "UID Byte 4"
++            default 0
++            range 0 255
++
++        config ESPNOW_DEFAULT_UID_B5
++            int "UID Byte 5"
++            default 0
++            range 0 255
++    endif
++
++endmenu
+diff --git a/components/espnow_server/espnow_server.cpp b/components/espnow_server/espnow_server.cpp
+index a569cf8..4fdb9cc 100644
+--- a/components/espnow_server/espnow_server.cpp
++++ b/components/espnow_server/espnow_server.cpp
+@@ -239,14 +239,50 @@ void runESPNOWServer(void *pvParameters)
+ 
+     nvs_close(bp_mac_handle);
+ 
++    // NVS が空（全ゼロ）の場合、sdkconfig のデフォルト UID を使用
++#ifdef CONFIG_ESPNOW_DEFAULT_UID_ENABLE
++    bool uid_is_empty = (bindAddress[0] == 0 && bindAddress[1] == 0 && bindAddress[2] == 0 &&
++                         bindAddress[3] == 0 && bindAddress[4] == 0 && bindAddress[5] == 0);
++    if (uid_is_empty)
++    {
++        bindAddress[0] = CONFIG_ESPNOW_DEFAULT_UID_B0 & ~0x01;
++        bindAddress[1] = CONFIG_ESPNOW_DEFAULT_UID_B1;
++        bindAddress[2] = CONFIG_ESPNOW_DEFAULT_UID_B2;
++        bindAddress[3] = CONFIG_ESPNOW_DEFAULT_UID_B3;
++        bindAddress[4] = CONFIG_ESPNOW_DEFAULT_UID_B4;
++        bindAddress[5] = CONFIG_ESPNOW_DEFAULT_UID_B5;
++        memcpy(sendAddress, bindAddress, 6);
++        ESP_LOGI(TAG, "NVS empty: using default UID from sdkconfig: [%d,%d,%d,%d,%d,%d]",
++                 bindAddress[0], bindAddress[1], bindAddress[2],
++                 bindAddress[3], bindAddress[4], bindAddress[5]);
++    }
++#endif
++
+     // Start WiFi for ESPNOW
++#ifdef CONFIG_TCP_USE_WIFI
++    // WiFi mode: create STA netif before wifi_init so tcp_server can get the handle
++    esp_netif_create_default_wifi_sta();
++#endif
++
+     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+     ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
+     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+ 
+     ESP_ERROR_CHECK(esp_wifi_start());
++
++#ifdef CONFIG_TCP_USE_WIFI
++    // WiFi mode: connect to AP for TCP server; channel follows the AP automatically
++    wifi_config_t sta_config = {};
++    strncpy((char *)sta_config.sta.ssid, CONFIG_TCP_WIFI_SSID, sizeof(sta_config.sta.ssid));
++    strncpy((char *)sta_config.sta.password, CONFIG_TCP_WIFI_PASSWORD, sizeof(sta_config.sta.password));
++    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta_config));
++    ESP_ERROR_CHECK(esp_wifi_connect());
++#else
++    // Ethernet mode: fix ESPNow channel (no AP to follow)
+     ESP_ERROR_CHECK(esp_wifi_set_channel(CONFIG_ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE));
++#endif
++
+     ESP_ERROR_CHECK(esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_LR));
+ 
+     // Start ESPNOW
+diff --git a/components/tcp_server/Kconfig.projbuild b/components/tcp_server/Kconfig.projbuild
+index 7c5c613..25173ce 100644
+--- a/components/tcp_server/Kconfig.projbuild
++++ b/components/tcp_server/Kconfig.projbuild
+@@ -5,4 +5,33 @@ menu "TCP Socket Server options"
+         help
+             Set TCP server listening port.
+ 
++    choice TCP_CONNECTION_TYPE
++        prompt "Network connection type"
++        default TCP_USE_ETHERNET
++        help
++            Select the network interface for the TCP server.
++            - Ethernet: Waveshare ESP32-S3 Ethernet board (W5500)
++            - WiFi: XIAO ESP32-S3 or any WiFi-only ESP32-S3 board
++
++        config TCP_USE_ETHERNET
++            bool "Ethernet (W5500 / Waveshare ESP32-S3)"
++
++        config TCP_USE_WIFI
++            bool "WiFi Station (XIAO ESP32-S3 etc.)"
++    endchoice
++
++    if TCP_USE_WIFI
++        config TCP_WIFI_SSID
++            string "WiFi SSID"
++            default "myssid"
++            help
++                SSID of the WiFi access point to connect to.
++
++        config TCP_WIFI_PASSWORD
++            string "WiFi Password"
++            default ""
++            help
++                Password for the WiFi access point.
++    endif
++
+ endmenu
+diff --git a/components/tcp_server/tcp_server.cpp b/components/tcp_server/tcp_server.cpp
+index d334a6e..209cd21 100644
+--- a/components/tcp_server/tcp_server.cpp
++++ b/components/tcp_server/tcp_server.cpp
+@@ -7,16 +7,19 @@
+ #include "freertos/task.h"
+ #include "esp_netif.h"
+ #include "esp_netif_net_stack.h"
+-#include "esp_eth.h"
+ #include "esp_event.h"
+ #include "esp_log.h"
+-#include "ethernet_init.h"
+ #include "lwip/sockets.h"
+-#include "dhcpserver/dhcpserver_options.h"
+ #include "tasks.h"
+ #include "msp.h"
+ #include "mdns.h"
+ 
++#ifdef CONFIG_TCP_USE_ETHERNET
++#include "esp_eth.h"
++#include "ethernet_init.h"
++#include "dhcpserver/dhcpserver_options.h"
++#endif
++
+ #define INVALID_SOCKET -1
+ #define LISTENER_MAX_QUEUE 1
+ #define SOCKET_MAX_LENGTH 1440 // at least equal to MSS
+@@ -40,7 +43,7 @@ static fd_set ready;
+ 
+ static bool mdns_setup = false;
+ 
+-static void initialize_mdns(esp_netif_t *eth_netif)
++static void initialize_mdns(esp_netif_t *netif)
+ {
+     ESP_ERROR_CHECK(mdns_init());
+     ESP_ERROR_CHECK(mdns_hostname_set("elrs-netpack"));
+@@ -52,30 +55,34 @@ static void initialize_mdns(esp_netif_t *eth_netif)
+ 
+     ESP_ERROR_CHECK(mdns_service_add("ExpressLRS Backpack", "_elrs-backpack", "_tcp", CONFIG_TCP_SERVER_PORT, serviceTxtData, 3));
+ 
+-    ESP_ERROR_CHECK(mdns_register_netif(eth_netif));
+-    ESP_ERROR_CHECK(mdns_netif_action(eth_netif, MDNS_EVENT_ENABLE_IP4));
+-    ESP_ERROR_CHECK(mdns_netif_action(eth_netif, MDNS_EVENT_ANNOUNCE_IP4));
+-    ESP_ERROR_CHECK(mdns_netif_action(eth_netif, MDNS_EVENT_IP4_REVERSE_LOOKUP));
++    ESP_ERROR_CHECK(mdns_register_netif(netif));
++    ESP_ERROR_CHECK(mdns_netif_action(netif, MDNS_EVENT_ENABLE_IP4));
++    ESP_ERROR_CHECK(mdns_netif_action(netif, MDNS_EVENT_ANNOUNCE_IP4));
++    ESP_ERROR_CHECK(mdns_netif_action(netif, MDNS_EVENT_IP4_REVERSE_LOOKUP));
+ 
+     mdns_setup = true;
+ }
+ 
+-/* Event handler for IP_EVENT_ETH_GOT_IP */
++/* Event handler for IP_EVENT_ETH_GOT_IP (Ethernet) or IP_EVENT_STA_GOT_IP (WiFi) */
+ static void got_ip_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *data)
+ {
+-    esp_netif_t *eth_netif = (esp_netif_t *)arg;
++    esp_netif_t *netif = (esp_netif_t *)arg;
+     ip_event_got_ip_t *event = (ip_event_got_ip_t *)data;
+     const esp_netif_ip_info_t *ip_info = &event->ip_info;
+ 
++#ifdef CONFIG_TCP_USE_ETHERNET
+     ESP_LOGI(TAG, "Ethernet Got IP Address");
++#else
++    ESP_LOGI(TAG, "WiFi Got IP Address");
++#endif
+     ESP_LOGI(TAG, "~~~~~~~~~~~");
+-    ESP_LOGI(TAG, "ETHIP:" IPSTR, IP2STR(&ip_info->ip));
+-    ESP_LOGI(TAG, "ETHMASK:" IPSTR, IP2STR(&ip_info->netmask));
+-    ESP_LOGI(TAG, "ETHGW:" IPSTR, IP2STR(&ip_info->gw));
++    ESP_LOGI(TAG, "IP:" IPSTR, IP2STR(&ip_info->ip));
++    ESP_LOGI(TAG, "MASK:" IPSTR, IP2STR(&ip_info->netmask));
++    ESP_LOGI(TAG, "GW:" IPSTR, IP2STR(&ip_info->gw));
+     ESP_LOGI(TAG, "~~~~~~~~~~~");
+ 
+     if (!mdns_setup)
+-        initialize_mdns(eth_netif);
++        initialize_mdns(netif);
+ }
+ 
+ static void tcp_server_sender(void *pvParameters)
+@@ -147,6 +154,7 @@ void run_tcp_server(void *pvParameters)
+     else
+         ESP_LOGE(TAG, "Semaphore does not exist");
+ 
++#ifdef CONFIG_TCP_USE_ETHERNET
+     // Initialize Ethernet driver
+     uint8_t eth_port_cnt = 0;
+     esp_eth_handle_t *eth_handles;
+@@ -175,17 +183,24 @@ void run_tcp_server(void *pvParameters)
+     eth_netif_cfg.if_key = if_key_str;
+     eth_netif_cfg.if_desc = if_desc_str;
+     eth_netif_cfg.route_prio -= 0 * 5;
+-    esp_netif_t *eth_netif = esp_netif_new(&cfg);
++    esp_netif_t *netif = esp_netif_new(&cfg);
+ 
+     // Attach Ethernet driver to TCP/IP stack
+-    ESP_ERROR_CHECK(esp_netif_attach(eth_netif, esp_eth_new_netif_glue(eth_handles[0])));
+-    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP, got_ip_event_handler, eth_netif));
++    ESP_ERROR_CHECK(esp_netif_attach(netif, esp_eth_new_netif_glue(eth_handles[0])));
++    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP, got_ip_event_handler, netif));
+     // Start Ethernet driver state machine
+     for (int i = 0; i < eth_port_cnt; i++)
+     {
+         ESP_ERROR_CHECK(esp_eth_start(eth_handles[i]));
+     }
+ 
++#else // CONFIG_TCP_USE_WIFI
++    // WiFi netif was created in espnow_server; get the handle and register IP event
++    esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
++    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, got_ip_event_handler, netif));
++
++#endif // CONFIG_TCP_USE_ETHERNET
++
+     char *rxbuffer = NULL;
+     char *txbuffer = NULL;
+ 
