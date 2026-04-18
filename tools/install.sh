@@ -26,14 +26,23 @@ fi
 echo "  → $DIR"
 mkdir -p "$DIR/locale"
 
+# ダウンロードコマンドを決定（curl 優先、なければ wget）
+if command -v curl >/dev/null 2>&1; then
+    dl() { curl -fsSL --max-time 15 -o "$1" "$2"; }
+elif command -v wget >/dev/null 2>&1; then
+    dl() { wget -q --timeout=15 -O "$1" "$2"; }
+else
+    echo "エラー: curl または wget が必要です"; exit 1
+fi
+
 # ステップ2: ダウンロード
 echo "[2/3] ファイルをダウンロード..."
 for f in __init__.py elrs_backpack.py connections.py msp.py manifest.json; do
     echo "  → $f"
-    wget -q --timeout=15 -O "$DIR/$f" "$REPO/$f" || { echo "ダウンロード失敗: $f"; exit 1; }
+    dl "$DIR/$f" "$REPO/$f" || { echo "ダウンロード失敗: $f"; exit 1; }
 done
 echo "  → locale/ja.json"
-wget -q --timeout=15 -O "$DIR/locale/ja.json" "$REPO/locale/ja.json" || { echo "ダウンロード失敗: ja.json"; exit 1; }
+dl "$DIR/locale/ja.json" "$REPO/locale/ja.json" || { echo "ダウンロード失敗: ja.json"; exit 1; }
 
 # ステップ3: 再起動
 echo "[3/3] RotorHazard を再起動..."
