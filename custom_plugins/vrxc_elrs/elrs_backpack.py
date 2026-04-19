@@ -405,8 +405,10 @@ class ELRSBackpack(VRxController):
         for index, char in enumerate(text):
             if index >= 50:
                 break
-
-            payload.append(ord(char))
+            char_code = ord(char)
+            if char_code > 255:
+                continue
+            payload.append(char_code)
 
         packet = MSPPacket()
         packet.set_function(MSPTypes.MSP_ELRS_SET_OSD)
