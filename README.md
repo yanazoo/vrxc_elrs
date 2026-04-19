@@ -35,9 +35,11 @@ This is a fork of [VRxC_ELRS](https://github.com/i-am-grub/VRxC_ELRS) by [Bryce 
 |---|---|
 | **ONBOARD** | [NuclearHazard](https://www.etsy.com/listing/1428199972) v7+ (built-in ESP32) |
 | **USB** | ESP32 / ESP8266 DevKit flashed with ELRS backpack firmware |
-| **SOCKET** (WiFi) | [XIAO ESP32-S3](https://www.seeedstudio.com/XIAO-ESP32S3-p-5627.html) running [yanazoo/elrs-netpack](https://github.com/yanazoo/elrs-netpack) |
+| **SOCKET** (WiFi) | [yanazoo/elrs-netpack](https://github.com/yanazoo/elrs-netpack) — dual-MCU WiFi-to-ESP-NOW bridge |
 
-> For the XIAO ESP32-S3 WiFi bridge setup, see [docs/XIAO_SETUP.md](docs/XIAO_SETUP.md).
+> **SOCKET mode** uses the [yanazoo/elrs-netpack](https://github.com/yanazoo/elrs-netpack) firmware.
+> The bridge consists of a **XIAO ESP32-S3** (WiFi / TCP) and an **ESP32 Wrover-E** (ESP-NOW to goggles) connected via UART.
+> For hardware wiring and firmware flashing instructions, see the **[elrs-netpack README](https://github.com/yanazoo/elrs-netpack)**.
 
 ---
 
@@ -177,9 +179,11 @@ Full list of OSD elements:
 |---|---|
 | **ONBOARD** | [NuclearHazard](https://www.etsy.com/listing/1428199972) v7 以降（内蔵 ESP32） |
 | **USB** | ELRS バックパックファームウェアを書き込んだ ESP32 / ESP8266 開発ボード |
-| **SOCKET**（WiFi） | [XIAO ESP32-S3](https://www.seeedstudio.com/XIAO-ESP32S3-p-5627.html) + [yanazoo/elrs-netpack](https://github.com/yanazoo/elrs-netpack) |
+| **SOCKET**（WiFi） | [yanazoo/elrs-netpack](https://github.com/yanazoo/elrs-netpack) — デュアル MCU WiFi→ESP-NOW ブリッジ |
 
-> XIAO ESP32-S3 の WiFi ブリッジセットアップ手順は [docs/XIAO_SETUP.md](docs/XIAO_SETUP.md) を参照してください。
+> **SOCKET モード**は [yanazoo/elrs-netpack](https://github.com/yanazoo/elrs-netpack) ファームウェアを使用します。
+> **XIAO ESP32-S3**（WiFi / TCP 担当）と **ESP32 Wrover-E**（ゴーグルへの ESP-NOW 担当）を UART 接続したデュアル MCU 構成です。
+> ハードウェアの配線やファームウェアの書き込み手順は **[elrs-netpack の README](https://github.com/yanazoo/elrs-netpack)** を参照してください。
 
 ---
 
