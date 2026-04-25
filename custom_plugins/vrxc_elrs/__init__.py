@@ -159,13 +159,13 @@ def initialize(rhapi: RHAPI.RHAPI):
     )
     rhapi.fields.register_option(_position_mode, "elrs_vrxc")
 
-    _gap_mode = UIField(
-        "_gap_mode",
-        "ギャップタイムを表示",
-        desc="オフ時はラップタイムを表示",
+    _show_totaltime = UIField(
+        "_show_totaltime",
+        "トータルタイムを常に表示",
+        desc="ラップのたびにトータルタイムを専用行に更新表示します",
         field_type=UIFieldType.CHECKBOX,
     )
-    rhapi.fields.register_option(_gap_mode, "elrs_vrxc")
+    rhapi.fields.register_option(_show_totaltime, "elrs_vrxc")
 
     _results_mode = UIField(
         "_results_mode",
@@ -336,9 +336,18 @@ def initialize(rhapi: RHAPI.RHAPI):
     )
     rhapi.fields.register_option(_currentlap_row, "elrs_vrxc")
 
+    _totaltime_row = UIField(
+        "_totaltime_row",
+        "トータルタイムの行",
+        desc="0〜17 の行を指定",
+        field_type=UIFieldType.BASIC_INT,
+        value=2,
+    )
+    rhapi.fields.register_option(_totaltime_row, "elrs_vrxc")
+
     _lapresults_row = UIField(
         "_lapresults_row",
-        "ラップ/ギャップ結果の行",
+        "ラップタイムの行",
         desc="0〜17 の行を指定",
         field_type=UIFieldType.BASIC_INT,
         value=15,
@@ -420,6 +429,15 @@ def initialize(rhapi: RHAPI.RHAPI):
         value=-1,
     )
     rhapi.fields.register_option(_currentlap_col, "elrs_vrxc")
+
+    _totaltime_col = UIField(
+        "_totaltime_col",
+        "トータルタイムの列",
+        desc="-1=自動センタリング、0〜49=手動指定",
+        field_type=UIFieldType.BASIC_INT,
+        value=-1,
+    )
+    rhapi.fields.register_option(_totaltime_col, "elrs_vrxc")
 
     _lapresults_col = UIField(
         "_lapresults_col",
