@@ -143,6 +143,14 @@ def initialize(rhapi: RHAPI.RHAPI):
     )
     rhapi.fields.register_option(_event_name, "elrs_vrxc")
 
+    _show_bestlap = UIField(
+        "_show_bestlap",
+        "ベストラップを常に表示",
+        desc="ラップ記録のたびに自己ベストを専用行に表示します",
+        field_type=UIFieldType.CHECKBOX,
+    )
+    rhapi.fields.register_option(_show_bestlap, "elrs_vrxc")
+
     _position_mode = UIField(
         "_position_mode",
         "現在の順位とラップを表示",
@@ -176,7 +184,7 @@ def initialize(rhapi: RHAPI.RHAPI):
         "ステージングメッセージ",
         desc="小文字はシンボルとして使用されます",
         field_type=UIFieldType.TEXT,
-        value="w ARM NOW x",
+        value="ARM NOW",
     )
     rhapi.fields.register_option(_racestage_message, "elrs_vrxc")
 
@@ -185,7 +193,7 @@ def initialize(rhapi: RHAPI.RHAPI):
         "レーススタートメッセージ",
         desc="小文字はシンボルとして使用されます",
         field_type=UIFieldType.TEXT,
-        value="w   GO!   x",
+        value="GO!",
     )
     rhapi.fields.register_option(_racestart_message, "elrs_vrxc")
 
@@ -194,7 +202,7 @@ def initialize(rhapi: RHAPI.RHAPI):
         "パイロット完了メッセージ",
         desc="小文字はシンボルとして使用されます",
         field_type=UIFieldType.TEXT,
-        value="w FINISHED! x",
+        value="FINISHED!",
     )
     rhapi.fields.register_option(_pilotdone_message, "elrs_vrxc")
 
@@ -203,7 +211,7 @@ def initialize(rhapi: RHAPI.RHAPI):
         "レース終了メッセージ",
         desc="小文字はシンボルとして使用されます",
         field_type=UIFieldType.TEXT,
-        value="w FINISH LAP! x",
+        value="FINISH LAP!",
     )
     rhapi.fields.register_option(_racefinish_message, "elrs_vrxc")
 
@@ -212,7 +220,7 @@ def initialize(rhapi: RHAPI.RHAPI):
         "レース停止メッセージ",
         desc="小文字はシンボルとして使用されます",
         field_type=UIFieldType.TEXT,
-        value="w  LAND NOW!  x",
+        value="LAND NOW!",
     )
     rhapi.fields.register_option(_racestop_message, "elrs_vrxc")
 
@@ -292,6 +300,15 @@ def initialize(rhapi: RHAPI.RHAPI):
     )
     rhapi.fields.register_option(_eventname_row, "elrs_vrxc")
 
+    _bestlap_row = UIField(
+        "_bestlap_row",
+        "ベストラップの行",
+        desc="0〜17 の行を指定",
+        field_type=UIFieldType.BASIC_INT,
+        value=1,
+    )
+    rhapi.fields.register_option(_bestlap_row, "elrs_vrxc")
+
     _announcement_row = UIField(
         "_announcement_row",
         "アナウンスの行",
@@ -367,6 +384,15 @@ def initialize(rhapi: RHAPI.RHAPI):
         value=-1,
     )
     rhapi.fields.register_option(_eventname_col, "elrs_vrxc")
+
+    _bestlap_col = UIField(
+        "_bestlap_col",
+        "ベストラップの列",
+        desc="-1=自動センタリング、0〜49=手動指定",
+        field_type=UIFieldType.BASIC_INT,
+        value=-1,
+    )
+    rhapi.fields.register_option(_bestlap_col, "elrs_vrxc")
 
     _announcement_col = UIField(
         "_announcement_col",

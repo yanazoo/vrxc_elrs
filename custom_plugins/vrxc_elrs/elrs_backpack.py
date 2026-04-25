@@ -30,6 +30,7 @@ class ELRSBackpack(VRxController):
         self._queue_lock = gevent.lock.RLock()
         self._manual_disconnect = True
         self._last_sent_osd: dict[int, dict[str, str]] = {}
+        self._best_laps: dict[int, int] = {}
 
     @property
     def _backpack_connected(self) -> bool:
@@ -249,6 +250,24 @@ class ELRSBackpack(VRxController):
         except KeyboardInterrupt:
             logger.error("Stopping blackpack connector greenlet")
 
+    def _clear_all_osd(self) -> None:
+        """Clear OSD for all active pilots in the current heat"""
+        seat_pilots = self._rhapi.race.pilots
+        for seat, pilot_id in seat_pilots.items():
+            if not pilot_id:
+                continue
+            if self._rhapi.db.pilot_attribute_value(pilot_id, "elrs_active") != "1":
+                continue
+            try:
+                uid = self.get_pilot_uid(pilot_id)
+                with self._queue_lock:
+                    self.set_send_uid(uid)
+                    self.send_clear_osd()
+                    self.send_display_osd()
+                    self.reset_send_uid()
+            except Exception:
+                pass
+
     def disconnect(self, *_) -> None:
         """
         Disconnect the connection loop (user-initiated)
@@ -263,6 +282,8 @@ class ELRSBackpack(VRxController):
             message = "バックパックが接続されていません"
             self._rhapi.ui.message_notify(self._rhapi.language.__(message))
             return
+
+        self._clear_all_osd()
 
         assert self._connection is not None
         self._connection.disconnect()
@@ -564,12 +585,12 @@ class ELRSBackpack(VRxController):
         if all([use_heat_name, use_round_num, heat_name, round_num]):
             round_trans = "ラウンド"
             heat_message = (
-                f"x {heat_name.upper()} | {round_trans.upper()} {round_num} w"
+                f"{heat_name.upper()} | {round_trans.upper()} {round_num}"
             )
             heat_start_col = self._get_col(heat_message, "_heatname_col")
             heat_message_parms = (heat_name_row, heat_start_col, heat_message)
         elif use_heat_name and heat_name:
-            heat_message = f"x {heat_name.upper()} w"
+            heat_message = f"{heat_name.upper()}"
             heat_start_col = self._get_col(heat_message, "_heatname_col")
             heat_message_parms = (heat_name_row, heat_start_col, heat_message)
         else:
@@ -578,7 +599,7 @@ class ELRSBackpack(VRxController):
         # Generate class message
         class_name_row = self._rhapi.db.option("_classname_row")
         if use_class_name and class_name:
-            class_message = f"x {class_name.upper()} w"
+            class_message = f"{class_name.upper()}"
             class_start_col = self._get_col(class_message, "_classname_col")
             class_message_parms = (class_name_row, class_start_col, class_message)
 
@@ -587,7 +608,7 @@ class ELRSBackpack(VRxController):
         event_name = self._rhapi.db.option("eventName")
         if use_event_name and event_name:
             event_name = self._rhapi.db.option("eventName")
-            event_message = heat_message = f"x {event_name.upper()} w"
+            event_message = heat_message = f"{event_name.upper()}"
             event_start_col = self._get_col(event_message, "_eventname_col")
             event_message_parms = (event_name_row, event_start_col, event_message)
 
@@ -796,7 +817,7 @@ class ELRSBackpack(VRxController):
                     formatted_time2 = self._rhapi.utils.format_split_time_to_str(
                         gap_info.current.consecutives, "{m}:{s}.{d}"
                     )
-                    message = f"x {formatted_time1} | {gap_info.current.consecutives_base}/{formatted_time2} w"
+                    message = f"{formatted_time1} | {gap_info.current.consecutives_base}/{formatted_time2}"
                 elif (
                     gap_info.race.win_condition == WinCondition.FASTEST_LAP
                     and gap_info.current.is_best_lap
@@ -804,7 +825,7 @@ class ELRSBackpack(VRxController):
                     formatted_time = self._rhapi.utils.format_split_time_to_str(
                         gap_info.current.last_lap_time, "{m}:{s}.{d}"
                     )
-                    message = f"x BEST LAP | {formatted_time} w"
+                    message = f"BEST LAP | {formatted_time}"
                 elif gap_info.race.win_condition in (
                     WinCondition.FASTEST_LAP,
                     WinCondition.FIRST_TO_LAP_X,
@@ -815,13 +836,13 @@ class ELRSBackpack(VRxController):
                     formatted_time2 = self._rhapi.utils.format_split_time_to_str(
                         gap_info.current.total_time_laps, "{m}:{s}.{d}"
                     )
-                    message = f"x {formatted_time2} | {formatted_time1} w"
+                    message = f"{formatted_time2} | {formatted_time1}"
                 else:
                     # Lap timer only (MOST_LAPS / NONE) - show single lap time
                     formatted_time = self._rhapi.utils.format_split_time_to_str(
                         gap_info.current.last_lap_time, "{m}:{s}.{d}"
                     )
-                    message = f"x {formatted_time} w"
+                    message = f"{formatted_time}"
 
             elif gap_info.race.win_condition == WinCondition.FASTEST_CONSECUTIVE:
                 formatted_time1 = self._rhapi.utils.format_split_time_to_str(
@@ -830,7 +851,7 @@ class ELRSBackpack(VRxController):
                 formatted_time2 = self._rhapi.utils.format_split_time_to_str(
                     gap_info.current.consecutives, "{m}:{s}.{d}"
                 )
-                message = f"x {formatted_time1} | {gap_info.current.consecutives_base}/{formatted_time2} w"
+                message = f"{formatted_time1} | {gap_info.current.consecutives_base}/{formatted_time2}"
 
             elif gap_info.race.win_condition == WinCondition.FASTEST_LAP:
                 if gap_info.next_rank.diff_time:
@@ -838,20 +859,20 @@ class ELRSBackpack(VRxController):
                         gap_info.next_rank.diff_time, "{m}:{s}.{d}"
                     )
                     formatted_callsign = str.upper(gap_info.next_rank.callsign)
-                    message = f"x {formatted_callsign} | +{formatted_time} w"
+                    message = f"{formatted_callsign} | +{formatted_time}"
 
                 elif gap_info.current.is_best_lap and gap_info.current.lap_number:
                     formatted_time = self._rhapi.utils.format_split_time_to_str(
                         gap_info.current.last_lap_time, "{m}:{s}.{d}"
                     )
-                    message = f"x {self._rhapi.db.option('_leader_message')} | {formatted_time} w"
+                    message = f"{self._rhapi.db.option('_leader_message')} | {formatted_time}"
 
                 elif gap_info.current.lap_number:
                     formatted_time = self._rhapi.utils.format_split_time_to_str(
                         gap_info.first_rank.diff_time, "{m}:{s}.{d}"
                     )
                     formatted_callsign = str.upper(gap_info.first_rank.callsign)
-                    message = f"x {formatted_callsign} | +{formatted_time} w"
+                    message = f"{formatted_callsign} | +{formatted_time}"
 
             else:
                 if gap_info.race.win_condition == WinCondition.FIRST_TO_LAP_X:
@@ -860,20 +881,20 @@ class ELRSBackpack(VRxController):
                             gap_info.next_rank.diff_time, "{m}:{s}.{d}"
                         )
                         formatted_callsign = str.upper(gap_info.next_rank.callsign)
-                        message = f"x {formatted_callsign} | +{formatted_time} w"
+                        message = f"{formatted_callsign} | +{formatted_time}"
 
                     elif gap_info.current.lap_number:
                         formatted_time = self._rhapi.utils.format_split_time_to_str(
                             gap_info.current.last_lap_time, "{m}:{s}.{d}"
                         )
-                        message = f"x {self._rhapi.db.option('_leader_message')} | {formatted_time} w"
+                        message = f"{self._rhapi.db.option('_leader_message')} | {formatted_time}"
                 else:
                     # Lap timer only (MOST_LAPS / NONE) - show single lap time
                     if gap_info.current.lap_number:
                         formatted_time = self._rhapi.utils.format_split_time_to_str(
                             gap_info.current.last_lap_time, "{m}:{s}.{d}"
                         )
-                        message = f"x {formatted_time} w"
+                        message = f"{formatted_time}"
 
             start_col = self._get_col(message, "_lapresults_col")
 
@@ -902,6 +923,27 @@ class ELRSBackpack(VRxController):
             if pilot_id:
                 pilots_completion[pilot_id] = seats_finished[slot]
 
+        def show_bestlap(result, gap_info):
+            if self._rhapi.db.option("_show_bestlap") != "1":
+                return
+            pilot_id = result["pilot_id"]
+            current_ms = gap_info.current.last_lap_time
+            stored = self._best_laps.get(pilot_id)
+            if stored is None or current_ms < stored:
+                self._best_laps[pilot_id] = current_ms
+            best_ms = self._best_laps[pilot_id]
+            formatted = self._rhapi.utils.format_split_time_to_str(best_ms, "{m}:{s}.{d}")
+            is_new = gap_info.current.is_best_lap and gap_info.current.lap_number > 0
+            message = f"BEST: {formatted}" + (" *" if is_new else "  ")
+            start_col = self._get_col(message, "_bestlap_col")
+            uid = self.get_pilot_uid(pilot_id)
+            self._queue_lock.acquire()
+            self.set_send_uid(uid)
+            self.send_osd_text(self._rhapi.db.option("_bestlap_row"), start_col, message)
+            self.send_display_osd()
+            self.reset_send_uid()
+            self._queue_lock.release()
+
         results = args["results"]["by_race_time"]
         for result in results:
             if (
@@ -913,6 +955,7 @@ class ELRSBackpack(VRxController):
 
                     if result["pilot_id"] == args["pilot_id"] and (result["laps"] > 0):
                         gevent.spawn(lap_results, result, args["gap_info"])
+                        gevent.spawn(show_bestlap, result, args["gap_info"])
 
     def onLapDelete(self, *_) -> None:
         """
@@ -1024,6 +1067,9 @@ class ELRSBackpack(VRxController):
             self.reset_send_uid()
             self._queue_lock.release()
 
+        self._best_laps.clear()
+        self._last_sent_osd.clear()
+
         seat_pilots = self._rhapi.race.pilots
         for seat in seat_pilots:
             if (
@@ -1053,7 +1099,7 @@ class ELRSBackpack(VRxController):
             self.send_osd_text(
                 self._rhapi.db.option("_announcement_row"),
                 start_col,
-                f"x {str.upper(args['message'])} w",
+                str.upper(args["message"]),
             )
             self.send_display_osd()
             self.reset_send_uid()
