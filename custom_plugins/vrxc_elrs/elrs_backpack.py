@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import time
 
 import gevent
 import gevent.lock
@@ -21,6 +22,8 @@ class CancelError(BaseException): ...
 class ELRSBackpack(VRxController):
     _connection: BackpackConnection | None = None
     _reconnect_greenlet: gevent.Greenlet | None = None
+    _race_clock_greenlet: gevent.Greenlet | None = None
+    _race_start_time: float = 0.0
 
     def __init__(self, name, label, rhapi):
         super().__init__(name, label)
@@ -278,6 +281,10 @@ class ELRSBackpack(VRxController):
             self._reconnect_greenlet.kill()
             self._reconnect_greenlet = None
 
+        if self._race_clock_greenlet is not None:
+            self._race_clock_greenlet.kill()
+            self._race_clock_greenlet = None
+
         if not self._backpack_connected:
             message = "バックパックが接続されていません"
             self._rhapi.ui.message_notify(self._rhapi.language.__(message))
@@ -347,22 +354,22 @@ class ELRSBackpack(VRxController):
         col = 50 // 2 - offset
         return max(col, 0)
 
-    def _get_col(self, text: str, col_option: str) -> int:
+    def _get_pos(self, pos_option: str, text: str = "") -> tuple[int, int]:
         """
-        Returns the column position for OSD text.
-        If the option value is negative, auto-centers the text.
-
-        :param text: The text to display
-        :param col_option: The option key for the column setting
-        :return: Column position (0-49)
+        Parses a 'row,col' option. Returns (row, col).
+        If col < 0, auto-centers text.
         """
         try:
-            col = int(self._rhapi.db.option(col_option))
-        except (TypeError, ValueError):
+            raw = self._rhapi.db.option(pos_option) or ""
+            parts = raw.split(",")
+            row = int(parts[0].strip())
+            col = int(parts[1].strip()) if len(parts) > 1 else -1
+        except (TypeError, ValueError, IndexError):
+            row = 0
             col = -1
         if col < 0:
-            return self.center_osd(len(text))
-        return col
+            col = self.center_osd(len(text)) if text else 0
+        return row, col
 
     def send_msp(self, msp: MSPPacket) -> None:
         """
@@ -581,44 +588,38 @@ class ELRSBackpack(VRxController):
             class_name = None
 
         # Generate heat message
-        heat_name_row = self._rhapi.db.option("_heatname_row")
         if all([use_heat_name, use_round_num, heat_name, round_num]):
             round_trans = "ラウンド"
-            heat_message = (
-                f"{heat_name.upper()} | {round_trans.upper()} {round_num}"
-            )
-            heat_start_col = self._get_col(heat_message, "_heatname_col")
-            heat_message_parms = (heat_name_row, heat_start_col, heat_message)
+            heat_message = f"{heat_name.upper()} | {round_trans.upper()} {round_num}"
+            heat_row, heat_col = self._get_pos("_heatname_pos", heat_message)
+            heat_message_parms = (heat_row, heat_col, heat_message)
         elif use_heat_name and heat_name:
             heat_message = f"{heat_name.upper()}"
-            heat_start_col = self._get_col(heat_message, "_heatname_col")
-            heat_message_parms = (heat_name_row, heat_start_col, heat_message)
+            heat_row, heat_col = self._get_pos("_heatname_pos", heat_message)
+            heat_message_parms = (heat_row, heat_col, heat_message)
         else:
             heat_message_parms = None
 
         # Generate class message
-        class_name_row = self._rhapi.db.option("_classname_row")
         if use_class_name and class_name:
             class_message = f"{class_name.upper()}"
-            class_start_col = self._get_col(class_message, "_classname_col")
-            class_message_parms = (class_name_row, class_start_col, class_message)
+            class_row, class_col = self._get_pos("_classname_pos", class_message)
+            class_message_parms = (class_row, class_col, class_message)
+        else:
+            class_message_parms = None
 
         # Generate event message
-        event_name_row = self._rhapi.db.option("_eventname_row")
         event_name = self._rhapi.db.option("eventName")
         if use_event_name and event_name:
-            event_name = self._rhapi.db.option("eventName")
-            event_message = heat_message = f"{event_name.upper()}"
-            event_start_col = self._get_col(event_message, "_eventname_col")
-            event_message_parms = (event_name_row, event_start_col, event_message)
+            event_message = f"{event_name.upper()}"
+            event_row, event_col = self._get_pos("_eventname_pos", event_message)
+            event_message_parms = (event_row, event_col, event_message)
+        else:
+            event_message_parms = None
 
         _stage_msg = self._rhapi.db.option("_racestage_message")
-        start_col = self._get_col(_stage_msg, "_status_col")
-        stage_mesage = (
-            self._rhapi.db.option("_status_row"),
-            start_col,
-            self._rhapi.db.option("_racestage_message"),
-        )
+        stage_row, stage_col = self._get_pos("_status_pos", _stage_msg)
+        stage_mesage = (stage_row, stage_col, _stage_msg)
 
         # Send stage message to all pilots
         def arm(pilot_id):
@@ -626,17 +627,13 @@ class ELRSBackpack(VRxController):
             with self._queue_lock:
                 self.set_send_uid(uid)
                 self.send_clear_osd()
-
-                # Send messages to backpack
                 self.send_osd_text(*stage_mesage)
-                if use_heat_name and heat_name:
-                    assert heat_message_parms is not None
+                if heat_message_parms:
                     self.send_osd_text(*heat_message_parms)
-                if use_class_name and class_name:
+                if class_message_parms:
                     self.send_osd_text(*class_message_parms)
-                if use_event_name and event_name:
+                if event_message_parms:
                     self.send_osd_text(*event_message_parms)
-
                 self.send_display_osd()
                 self.reset_send_uid()
 
@@ -655,22 +652,21 @@ class ELRSBackpack(VRxController):
         if not self._backpack_connected:
             return
 
+        if self._rhapi.db.option("_show_raceclock") == "1":
+            self._race_start_time = time.time()
+            if self._race_clock_greenlet is None or self._race_clock_greenlet.dead:
+                self._race_clock_greenlet = gevent.spawn(self._race_clock_loop)
+
+        msg = self._rhapi.db.option("_racestart_message")
+        status_row, start_col = self._get_pos("_status_pos", msg)
+
         def start(pilot_id):
             uid = self.get_pilot_uid(pilot_id)
-            start_col = self._get_col(
-                self._rhapi.db.option("_racestart_message"), "_status_col"
-            )
 
             self._queue_lock.acquire()
             self.set_send_uid(uid)
-
             self.send_clear_osd()
-
-            self.send_osd_text(
-                self._rhapi.db.option("_status_row"),
-                start_col,
-                self._rhapi.db.option("_racestart_message"),
-            )
+            self.send_osd_text(status_row, start_col, msg)
             self.send_display_osd()
             self.reset_send_uid()
             self._queue_lock.release()
@@ -679,7 +675,7 @@ class ELRSBackpack(VRxController):
 
             self._queue_lock.acquire()
             self.set_send_uid(uid)
-            self.send_clear_osd_row(self._rhapi.db.option("_status_row"))
+            self.send_clear_osd_row(status_row)
             self.send_display_osd()
             self.reset_send_uid()
             self._queue_lock.release()
@@ -695,24 +691,77 @@ class ELRSBackpack(VRxController):
             ):
                 gevent.spawn(start, seat_pilots[seat])
 
+    def _race_clock_loop(self) -> None:
+        while True:
+            gevent.sleep(1)
+            if not self._backpack_connected:
+                continue
+            elapsed = int(time.time() - self._race_start_time)
+            mm = elapsed // 60
+            ss = elapsed % 60
+            message = f"{mm:02d}:{ss:02d}"
+            clock_row, clock_col = self._get_pos("_raceclock_pos", message)
+
+            seats_finished = self._rhapi.race.seats_finished
+            seat_pilots = self._rhapi.race.pilots
+            for seat, pilot_id in seat_pilots.items():
+                if not pilot_id:
+                    continue
+                if self._rhapi.db.pilot_attribute_value(pilot_id, "elrs_active") != "1":
+                    continue
+                if seats_finished.get(seat):
+                    continue
+                try:
+                    uid = self.get_pilot_uid(pilot_id)
+                    with self._queue_lock:
+                        self.set_send_uid(uid)
+                        self.send_osd_text(clock_row, clock_col, message)
+                        self.send_display_osd()
+                        self.reset_send_uid()
+                except Exception:
+                    logger.exception("Race clock OSD error for pilot %s", pilot_id)
+
+    def _stop_race_clock(self) -> None:
+        if self._race_clock_greenlet is not None:
+            self._race_clock_greenlet.kill()
+            self._race_clock_greenlet = None
+
+        if not self._backpack_connected:
+            return
+        if self._rhapi.db.option("_show_raceclock") != "1":
+            return
+
+        clock_row, _ = self._get_pos("_raceclock_pos")
+        seat_pilots = self._rhapi.race.pilots
+        for seat, pilot_id in seat_pilots.items():
+            if not pilot_id:
+                continue
+            if self._rhapi.db.pilot_attribute_value(pilot_id, "elrs_active") != "1":
+                continue
+            try:
+                uid = self.get_pilot_uid(pilot_id)
+                with self._queue_lock:
+                    self.set_send_uid(uid)
+                    self.send_clear_osd_row(clock_row)
+                    self.send_display_osd()
+                    self.reset_send_uid()
+            except Exception:
+                pass
+
     def onRaceFinish(self, *_) -> None:
         if not self._backpack_connected:
             return
 
+        msg = self._rhapi.db.option("_racefinish_message")
+        status_row, finish_col = self._get_pos("_status_pos", msg)
+
         def finish(pilot_id):
             uid = self.get_pilot_uid(pilot_id)
-            start_col = self._get_col(
-                self._rhapi.db.option("_racefinish_message"), "_status_col"
-            )
 
             self._queue_lock.acquire()
             self.set_send_uid(uid)
-            self.send_clear_osd_row(self._rhapi.db.option("_status_row"))
-            self.send_osd_text(
-                self._rhapi.db.option("_status_row"),
-                start_col,
-                self._rhapi.db.option("_racefinish_message"),
-            )
+            self.send_clear_osd_row(status_row)
+            self.send_osd_text(status_row, finish_col, msg)
             self.send_display_osd()
             self.reset_send_uid()
             self._queue_lock.release()
@@ -721,7 +770,7 @@ class ELRSBackpack(VRxController):
 
             self._queue_lock.acquire()
             self.set_send_uid(uid)
-            self.send_clear_osd_row(self._rhapi.db.option("_status_row"))
+            self.send_clear_osd_row(status_row)
             self.send_display_osd()
             self.reset_send_uid()
             self._queue_lock.release()
@@ -744,17 +793,17 @@ class ELRSBackpack(VRxController):
         if not self._backpack_connected:
             return
 
+        self._stop_race_clock()
+
+        msg = self._rhapi.db.option("_racestop_message")
+        status_row, stop_col = self._get_pos("_status_pos", msg)
+
         def land(pilot_id):
             uid = self.get_pilot_uid(pilot_id)
-            start_col = self._get_col(self._rhapi.db.option("_racestop_message"), "_status_col")
 
             self._queue_lock.acquire()
             self.set_send_uid(uid)
-            self.send_osd_text(
-                self._rhapi.db.option("_status_row"),
-                start_col,
-                self._rhapi.db.option("_racestop_message"),
-            )
+            self.send_osd_text(status_row, stop_col, msg)
             self.send_display_osd()
             self.reset_send_uid()
             self._queue_lock.release()
@@ -785,22 +834,17 @@ class ELRSBackpack(VRxController):
             else:
                 message = f"POSN: {str(result['position']).upper()} | LAP: {result['laps'] + 1}"
 
-            # Skip if OSD for this pilot already shows this exact message
             last = self._last_sent_osd.setdefault(pilot_id, {})
             if last.get("pos") == message:
                 return
             last["pos"] = message
 
-            start_col = self._get_col(message, "_currentlap_col")
-
+            currentlap_row, start_col = self._get_pos("_currentlap_pos", message)
             uid = self.get_pilot_uid(pilot_id)
             self._queue_lock.acquire()
             self.set_send_uid(uid)
-            self.send_clear_osd_row(self._rhapi.db.option("_currentlap_row"))
-
-            self.send_osd_text(
-                self._rhapi.db.option("_currentlap_row"), start_col, message
-            )
+            self.send_clear_osd_row(currentlap_row)
+            self.send_osd_text(currentlap_row, start_col, message)
             self.send_display_osd()
             self.reset_send_uid()
             self._queue_lock.release()
@@ -811,14 +855,12 @@ class ELRSBackpack(VRxController):
                 gap_info.current.last_lap_time, "{m}:{s}.{d}"
             )
             message = formatted_time
-            start_col = self._get_col(message, "_lapresults_col")
+            lapresults_row, start_col = self._get_pos("_lapresults_pos", message)
 
             uid = self.get_pilot_uid(pilot_id)
             self._queue_lock.acquire()
             self.set_send_uid(uid)
-            self.send_osd_text(
-                self._rhapi.db.option("_lapresults_row"), start_col, message
-            )
+            self.send_osd_text(lapresults_row, start_col, message)
             self.send_display_osd()
             self.reset_send_uid()
             self._queue_lock.release()
@@ -827,7 +869,7 @@ class ELRSBackpack(VRxController):
 
             self._queue_lock.acquire()
             self.set_send_uid(uid)
-            self.send_clear_osd_row(self._rhapi.db.option("_lapresults_row"))
+            self.send_clear_osd_row(lapresults_row)
             self.send_display_osd()
             self.reset_send_uid()
             self._queue_lock.release()
@@ -840,22 +882,14 @@ class ELRSBackpack(VRxController):
                 gap_info.current.total_time_laps, "{m}:{s}.{d}"
             )
             message = f"TOTAL: {formatted}"
-            start_col = self._get_col(message, "_totaltime_col")
+            totaltime_row, start_col = self._get_pos("_totaltime_pos", message)
             uid = self.get_pilot_uid(pilot_id)
             self._queue_lock.acquire()
             self.set_send_uid(uid)
-            self.send_osd_text(
-                self._rhapi.db.option("_totaltime_row"), start_col, message
-            )
+            self.send_osd_text(totaltime_row, start_col, message)
             self.send_display_osd()
             self.reset_send_uid()
             self._queue_lock.release()
-
-        seats_finished = self._rhapi.race.seats_finished
-        pilots_completion = {}
-        for slot, pilot_id in self._rhapi.race.pilots.items():
-            if pilot_id:
-                pilots_completion[pilot_id] = seats_finished[slot]
 
         def show_bestlap(result, gap_info):
             if self._rhapi.db.option("_show_bestlap") != "1":
@@ -867,16 +901,21 @@ class ELRSBackpack(VRxController):
                 self._best_laps[pilot_id] = current_ms
             best_ms = self._best_laps[pilot_id]
             formatted = self._rhapi.utils.format_split_time_to_str(best_ms, "{m}:{s}.{d}")
-            is_new = gap_info.current.is_best_lap and gap_info.current.lap_number > 0
-            message = f"BEST: {formatted}" + (" *" if is_new else "  ")
-            start_col = self._get_col(message, "_bestlap_col")
+            message = f"BEST: {formatted}"
+            bestlap_row, start_col = self._get_pos("_bestlap_pos", message)
             uid = self.get_pilot_uid(pilot_id)
             self._queue_lock.acquire()
             self.set_send_uid(uid)
-            self.send_osd_text(self._rhapi.db.option("_bestlap_row"), start_col, message)
+            self.send_osd_text(bestlap_row, start_col, message)
             self.send_display_osd()
             self.reset_send_uid()
             self._queue_lock.release()
+
+        seats_finished = self._rhapi.race.seats_finished
+        pilots_completion = {}
+        for slot, pilot_id in self._rhapi.race.pilots.items():
+            if pilot_id:
+                pilots_completion[pilot_id] = seats_finished[slot]
 
         results = args["results"]["by_race_time"]
         for result in results:
@@ -929,26 +968,22 @@ class ELRSBackpack(VRxController):
 
         def done(result, win_condition):
             pilot_id = result["pilot_id"]
-            start_col = self._get_col(
-                self._rhapi.db.option("_pilotdone_message"), "_status_col"
-            )
-            results_row1 = self._rhapi.db.option("_results_row")
+            done_msg = self._rhapi.db.option("_pilotdone_message")
+            status_row, start_col = self._get_pos("_status_pos", done_msg)
+            currentlap_row, _ = self._get_pos("_currentlap_pos")
+            results_row1, _ = self._get_pos("_results_pos")
             results_row2 = results_row1 + 1
 
             uid = self.get_pilot_uid(pilot_id)
             self._queue_lock.acquire()
             self.set_send_uid(uid)
-            self.send_clear_osd_row(self._rhapi.db.option("_currentlap_row"))
-            self.send_clear_osd_row(self._rhapi.db.option("_status_row"))
-            self.send_osd_text(
-                self._rhapi.db.option("_status_row"),
-                start_col,
-                self._rhapi.db.option("_pilotdone_message"),
-            )
+            self.send_clear_osd_row(currentlap_row)
+            self.send_clear_osd_row(status_row)
+            self.send_osd_text(status_row, start_col, done_msg)
 
             if self._rhapi.db.option("_results_mode") == "1":
                 placement_message = f"PLACEMENT: {result['position']}"
-                place_col = self._get_col(placement_message, "_results_col")
+                _, place_col = self._get_pos("_results_pos", placement_message)
                 self.send_osd_text(results_row1, place_col, placement_message)
 
                 if win_condition == WinCondition.FASTEST_CONSECUTIVE:
@@ -960,7 +995,7 @@ class ELRSBackpack(VRxController):
                 else:
                     win_message = f"LAPS COMPLETED: {result['laps']}"
 
-                win_col = self._get_col(win_message, "_results_col")
+                _, win_col = self._get_pos("_results_pos", win_message)
                 self.send_osd_text(results_row2, win_col, win_message)
 
             self.send_display_osd()
@@ -971,7 +1006,7 @@ class ELRSBackpack(VRxController):
 
             self._queue_lock.acquire()
             self.set_send_uid(uid)
-            self.send_clear_osd_row(self._rhapi.db.option("_status_row"))
+            self.send_clear_osd_row(status_row)
             self.send_display_osd()
             self.reset_send_uid()
             self._queue_lock.release()
@@ -992,6 +1027,8 @@ class ELRSBackpack(VRxController):
         """
         if not self._backpack_connected:
             return
+
+        self._stop_race_clock()
 
         def clear(pilot_id):
             uid = self.get_pilot_uid(pilot_id)
@@ -1026,16 +1063,14 @@ class ELRSBackpack(VRxController):
         if args is None:
             return
 
+        announce_msg = str.upper(args["message"])
+        announce_row, announce_col = self._get_pos("_announcement_pos", announce_msg)
+
         def notify(pilot):
             uid = self.get_pilot_uid(pilot)
-            start_col = self._get_col(args["message"], "_announcement_col")
             self._queue_lock.acquire()
             self.set_send_uid(uid)
-            self.send_osd_text(
-                self._rhapi.db.option("_announcement_row"),
-                start_col,
-                str.upper(args["message"]),
-            )
+            self.send_osd_text(announce_row, announce_col, announce_msg)
             self.send_display_osd()
             self.reset_send_uid()
             self._queue_lock.release()
@@ -1044,7 +1079,7 @@ class ELRSBackpack(VRxController):
 
             self._queue_lock.acquire()
             self.set_send_uid(uid)
-            self.send_clear_osd_row(self._rhapi.db.option("_announcement_row"))
+            self.send_clear_osd_row(announce_row)
             self.send_display_osd()
             self.reset_send_uid()
             self._queue_lock.release()
