@@ -234,6 +234,8 @@ class SocketConnection:
             return False
 
         self._socket.settimeout(None)
+        # Disable Nagle's algorithm so each write is sent immediately
+        self._socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
         self._send_greenlet = gevent.spawn(self._send)
         self._recieve_greenlet = gevent.spawn(self._recieve)
@@ -242,16 +244,27 @@ class SocketConnection:
 
     def _send(self) -> None:
         """
-        Sends data from the queue over the socket
+        Sends data from the queue over the socket.
+        Drains all packets queued together into one TCP write to minimize latency.
         """
         try:
             while self._connected:
-                packet: MSPPacket = self._send_queue.get()
+                # Block until at least one packet is available
+                first: MSPPacket = self._send_queue.get()
+                data = bytearray(first.get_packet())
+
+                # Drain any packets already waiting (queued in same lock section)
+                while True:
+                    try:
+                        pkt: MSPPacket = self._send_queue.get_nowait()
+                        data += pkt.get_packet()
+                    except gevent.queue.Empty:
+                        break
 
                 timeout = gevent.Timeout(1)
                 timeout.start()
                 try:
-                    self._socket.sendall(packet.get_packet())
+                    self._socket.sendall(bytes(data))
                 finally:
                     timeout.close()
         except (gevent._socketcommon.cancel_wait_ex, OSError, gevent.Timeout):
