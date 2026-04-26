@@ -692,6 +692,8 @@ class ELRSBackpack(VRxController):
                 gevent.spawn(start, seat_pilots[seat])
 
     def _race_clock_loop(self) -> None:
+        logger.info("Race clock loop started")
+        first_tick = True
         while True:
             gevent.sleep(1)
             if not self._backpack_connected:
@@ -702,14 +704,14 @@ class ELRSBackpack(VRxController):
             message = f"{mm:02d}:{ss:02d}"
             clock_row, clock_col = self._get_pos("_raceclock_pos", message)
 
-            seats_finished = self._rhapi.race.seats_finished
             seat_pilots = self._rhapi.race.pilots
+            sent_count = 0
             for seat, pilot_id in seat_pilots.items():
                 if not pilot_id:
                     continue
                 if self._rhapi.db.pilot_attribute_value(pilot_id, "elrs_active") != "1":
-                    continue
-                if seats_finished.get(seat):
+                    if first_tick:
+                        logger.info("Race clock: pilot %s skipped (elrs_active not set)", pilot_id)
                     continue
                 try:
                     uid = self.get_pilot_uid(pilot_id)
@@ -718,8 +720,13 @@ class ELRSBackpack(VRxController):
                         self.send_osd_text(clock_row, clock_col, message)
                         self.send_display_osd()
                         self.reset_send_uid()
+                    sent_count += 1
                 except Exception:
                     logger.exception("Race clock OSD error for pilot %s", pilot_id)
+            if first_tick:
+                logger.info("Race clock first tick: %s, sent to %d pilot(s) at row=%d col=%d",
+                            message, sent_count, clock_row, clock_col)
+                first_tick = False
 
     def _stop_race_clock(self) -> None:
         if self._race_clock_greenlet is not None:
