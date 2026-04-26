@@ -282,107 +282,63 @@ def initialize(rhapi: RHAPI.RHAPI):
     rhapi.fields.register_option(_announcement_uptime, "elrs_vrxc")
 
     #
-    # 行・列位置（「行,列」形式。例: "5,-1"　列が負の値=自動センタリング）
+    # 行・列位置（列: -1=自動センタリング、0〜49=手動指定）
     #
 
-    _heatname_pos = UIField(
-        "_heatname_pos",
-        "ヒート名の位置 (行,列)",
-        desc="例: 2,-1　列が負の値=自動センタリング",
-        field_type=UIFieldType.TEXT,
-        value="2,-1",
-    )
-    rhapi.fields.register_option(_heatname_pos, "elrs_vrxc")
+    _heatname_row = UIField("_heatname_row", "ヒート名  行", field_type=UIFieldType.BASIC_INT, value=2)
+    rhapi.fields.register_option(_heatname_row, "elrs_vrxc")
+    _heatname_col = UIField("_heatname_col", "ヒート名  列", desc="-1=自動センタリング", field_type=UIFieldType.BASIC_INT, value=-1)
+    rhapi.fields.register_option(_heatname_col, "elrs_vrxc")
 
-    _classname_pos = UIField(
-        "_classname_pos",
-        "クラス名の位置 (行,列)",
-        desc="例: 1,-1　列が負の値=自動センタリング",
-        field_type=UIFieldType.TEXT,
-        value="1,-1",
-    )
-    rhapi.fields.register_option(_classname_pos, "elrs_vrxc")
+    _classname_row = UIField("_classname_row", "クラス名  行", field_type=UIFieldType.BASIC_INT, value=1)
+    rhapi.fields.register_option(_classname_row, "elrs_vrxc")
+    _classname_col = UIField("_classname_col", "クラス名  列", desc="-1=自動センタリング", field_type=UIFieldType.BASIC_INT, value=-1)
+    rhapi.fields.register_option(_classname_col, "elrs_vrxc")
 
-    _eventname_pos = UIField(
-        "_eventname_pos",
-        "イベント名の位置 (行,列)",
-        desc="例: 0,-1　列が負の値=自動センタリング",
-        field_type=UIFieldType.TEXT,
-        value="0,-1",
-    )
-    rhapi.fields.register_option(_eventname_pos, "elrs_vrxc")
+    _eventname_row = UIField("_eventname_row", "イベント名  行", field_type=UIFieldType.BASIC_INT, value=0)
+    rhapi.fields.register_option(_eventname_row, "elrs_vrxc")
+    _eventname_col = UIField("_eventname_col", "イベント名  列", desc="-1=自動センタリング", field_type=UIFieldType.BASIC_INT, value=-1)
+    rhapi.fields.register_option(_eventname_col, "elrs_vrxc")
 
-    _bestlap_pos = UIField(
-        "_bestlap_pos",
-        "ベストラップの位置 (行,列)",
-        desc="例: 1,-1　列が負の値=自動センタリング",
-        field_type=UIFieldType.TEXT,
-        value="1,-1",
-    )
-    rhapi.fields.register_option(_bestlap_pos, "elrs_vrxc")
+    _bestlap_row = UIField("_bestlap_row", "ベストラップ  行", field_type=UIFieldType.BASIC_INT, value=1)
+    rhapi.fields.register_option(_bestlap_row, "elrs_vrxc")
+    _bestlap_col = UIField("_bestlap_col", "ベストラップ  列", desc="-1=自動センタリング", field_type=UIFieldType.BASIC_INT, value=-1)
+    rhapi.fields.register_option(_bestlap_col, "elrs_vrxc")
 
-    _announcement_pos = UIField(
-        "_announcement_pos",
-        "アナウンスの位置 (行,列)",
-        desc="例: 3,-1　列が負の値=自動センタリング",
-        field_type=UIFieldType.TEXT,
-        value="3,-1",
-    )
-    rhapi.fields.register_option(_announcement_pos, "elrs_vrxc")
+    _announcement_row = UIField("_announcement_row", "アナウンス  行", field_type=UIFieldType.BASIC_INT, value=3)
+    rhapi.fields.register_option(_announcement_row, "elrs_vrxc")
+    _announcement_col = UIField("_announcement_col", "アナウンス  列", desc="-1=自動センタリング", field_type=UIFieldType.BASIC_INT, value=-1)
+    rhapi.fields.register_option(_announcement_col, "elrs_vrxc")
 
-    _status_pos = UIField(
-        "_status_pos",
-        "レースステータスの位置 (行,列)",
-        desc="例: 5,-1　列が負の値=自動センタリング",
-        field_type=UIFieldType.TEXT,
-        value="5,-1",
-    )
-    rhapi.fields.register_option(_status_pos, "elrs_vrxc")
+    _status_row = UIField("_status_row", "レースステータス  行", field_type=UIFieldType.BASIC_INT, value=5)
+    rhapi.fields.register_option(_status_row, "elrs_vrxc")
+    _status_col = UIField("_status_col", "レースステータス  列", desc="-1=自動センタリング", field_type=UIFieldType.BASIC_INT, value=-1)
+    rhapi.fields.register_option(_status_col, "elrs_vrxc")
 
-    _currentlap_pos = UIField(
-        "_currentlap_pos",
-        "現在のラップ/順位の位置 (行,列)",
-        desc="例: 0,-1　列が負の値=自動センタリング",
-        field_type=UIFieldType.TEXT,
-        value="0,-1",
-    )
-    rhapi.fields.register_option(_currentlap_pos, "elrs_vrxc")
+    _currentlap_row = UIField("_currentlap_row", "現在のラップ/順位  行", field_type=UIFieldType.BASIC_INT, value=0)
+    rhapi.fields.register_option(_currentlap_row, "elrs_vrxc")
+    _currentlap_col = UIField("_currentlap_col", "現在のラップ/順位  列", desc="-1=自動センタリング", field_type=UIFieldType.BASIC_INT, value=-1)
+    rhapi.fields.register_option(_currentlap_col, "elrs_vrxc")
 
-    _totaltime_pos = UIField(
-        "_totaltime_pos",
-        "トータルタイムの位置 (行,列)",
-        desc="例: 2,-1　列が負の値=自動センタリング",
-        field_type=UIFieldType.TEXT,
-        value="2,-1",
-    )
-    rhapi.fields.register_option(_totaltime_pos, "elrs_vrxc")
+    _totaltime_row = UIField("_totaltime_row", "トータルタイム  行", field_type=UIFieldType.BASIC_INT, value=2)
+    rhapi.fields.register_option(_totaltime_row, "elrs_vrxc")
+    _totaltime_col = UIField("_totaltime_col", "トータルタイム  列", desc="-1=自動センタリング", field_type=UIFieldType.BASIC_INT, value=-1)
+    rhapi.fields.register_option(_totaltime_col, "elrs_vrxc")
 
-    _lapresults_pos = UIField(
-        "_lapresults_pos",
-        "ラップタイムの位置 (行,列)",
-        desc="例: 15,-1　列が負の値=自動センタリング",
-        field_type=UIFieldType.TEXT,
-        value="15,-1",
-    )
-    rhapi.fields.register_option(_lapresults_pos, "elrs_vrxc")
+    _lapresults_row = UIField("_lapresults_row", "ラップタイム  行", field_type=UIFieldType.BASIC_INT, value=15)
+    rhapi.fields.register_option(_lapresults_row, "elrs_vrxc")
+    _lapresults_col = UIField("_lapresults_col", "ラップタイム  列", desc="-1=自動センタリング", field_type=UIFieldType.BASIC_INT, value=-1)
+    rhapi.fields.register_option(_lapresults_col, "elrs_vrxc")
 
-    _results_pos = UIField(
-        "_results_pos",
-        "結果の位置 (行,列)  ※2行使用",
-        desc="例: 13,-1　列が負の値=自動センタリング",
-        field_type=UIFieldType.TEXT,
-        value="13,-1",
-    )
-    rhapi.fields.register_option(_results_pos, "elrs_vrxc")
+    _results_row = UIField("_results_row", "結果  行  ※2行使用", field_type=UIFieldType.BASIC_INT, value=13)
+    rhapi.fields.register_option(_results_row, "elrs_vrxc")
+    _results_col = UIField("_results_col", "結果  列", desc="-1=自動センタリング", field_type=UIFieldType.BASIC_INT, value=-1)
+    rhapi.fields.register_option(_results_col, "elrs_vrxc")
 
-    _raceclock_pos = UIField(
-        "_raceclock_pos",
-        "レースクロックの位置 (行,列)",
-        desc="例: 17,-1　列が負の値=自動センタリング",
-        field_type=UIFieldType.TEXT,
-        value="17,-1",
-    )
-    rhapi.fields.register_option(_raceclock_pos, "elrs_vrxc")
+    _raceclock_row = UIField("_raceclock_row", "レースクロック  行", field_type=UIFieldType.BASIC_INT, value=17)
+    rhapi.fields.register_option(_raceclock_row, "elrs_vrxc")
+    _raceclock_col = UIField("_raceclock_col", "レースクロック  列", desc="-1=自動センタリング", field_type=UIFieldType.BASIC_INT, value=-1)
+    rhapi.fields.register_option(_raceclock_col, "elrs_vrxc")
 
     #
     # ボタン
