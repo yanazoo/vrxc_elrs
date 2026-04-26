@@ -981,30 +981,29 @@ class ELRSBackpack(VRxController):
             results_row1, _ = self._get_pos("_results_pos")
             results_row2 = results_row1 + 1
 
+            show_results = self._rhapi.db.option("_results_mode") == "1"
+            if show_results:
+                placement_message = f"PLACEMENT: {result.get('position', '?')}"
+                _, place_col = self._get_pos("_results_pos", placement_message)
+                if win_condition == WinCondition.FASTEST_CONSECUTIVE:
+                    win_message = f"FASTEST {result.get('consecutives_base','?')} CONSEC: {result.get('consecutives','?')}"
+                elif win_condition == WinCondition.FASTEST_LAP:
+                    win_message = f"FASTEST LAP: {result.get('fastest_lap','?')}"
+                elif win_condition == WinCondition.FIRST_TO_LAP_X:
+                    win_message = f"TOTAL TIME: {result.get('total_time','?')}"
+                else:
+                    win_message = f"LAPS: {result.get('laps','?')}"
+                _, win_col = self._get_pos("_results_pos", win_message)
+
             uid = self.get_pilot_uid(pilot_id)
             self._queue_lock.acquire()
             self.set_send_uid(uid)
             self.send_clear_osd_row(currentlap_row)
             self.send_clear_osd_row(status_row)
             self.send_osd_text(status_row, start_col, done_msg)
-
-            if self._rhapi.db.option("_results_mode") == "1":
-                placement_message = f"PLACEMENT: {result['position']}"
-                _, place_col = self._get_pos("_results_pos", placement_message)
+            if show_results:
                 self.send_osd_text(results_row1, place_col, placement_message)
-
-                if win_condition == WinCondition.FASTEST_CONSECUTIVE:
-                    win_message = f"FASTEST {result['consecutives_base']} CONSEC: {result['consecutives']}"
-                elif win_condition == WinCondition.FASTEST_LAP:
-                    win_message = f"FASTEST LAP: {result['fastest_lap']}"
-                elif win_condition == WinCondition.FIRST_TO_LAP_X:
-                    win_message = f"TOTAL TIME: {result['total_time']}"
-                else:
-                    win_message = f"LAPS COMPLETED: {result['laps']}"
-
-                _, win_col = self._get_pos("_results_pos", win_message)
                 self.send_osd_text(results_row2, win_col, win_message)
-
             self.send_display_osd()
             self.reset_send_uid()
             self._queue_lock.release()
@@ -1014,19 +1013,40 @@ class ELRSBackpack(VRxController):
             self._queue_lock.acquire()
             self.set_send_uid(uid)
             self.send_clear_osd_row(status_row)
+            if show_results:
+                self.send_clear_osd_row(results_row1)
+                self.send_clear_osd_row(results_row2)
             self.send_display_osd()
             self.reset_send_uid()
             self._queue_lock.release()
 
-        results = args["results"]
-        leaderboard = results[results["meta"]["primary_leaderboard"]]
+        results = args.get("results")
+        if not results:
+            logger.warning("onRacePilotDone: results not in args")
+            return
+
+        try:
+            primary = results["meta"]["primary_leaderboard"]
+            leaderboard = results[primary]
+        except (KeyError, TypeError) as e:
+            logger.warning("onRacePilotDone: failed to get leaderboard: %s", e)
+            return
+
+        pilot_id = args["pilot_id"]
+        if self._rhapi.db.pilot_attribute_value(pilot_id, "elrs_active") != "1":
+            return
+
         for result in leaderboard:
-            if (
-                self._rhapi.db.pilot_attribute_value(args["pilot_id"], "elrs_active")
-                == "1"
-            ) and (result["pilot_id"] == args["pilot_id"]):
-                gevent.spawn(done, result, results["meta"]["win_condition"])
+            if result["pilot_id"] == pilot_id:
+                try:
+                    win_condition = results["meta"]["win_condition"]
+                except (KeyError, TypeError):
+                    win_condition = None
+                logger.info("onRacePilotDone: pilot %s pos=%s", pilot_id, result.get("position"))
+                gevent.spawn(done, result, win_condition)
                 break
+        else:
+            logger.warning("onRacePilotDone: pilot %s not found in leaderboard", pilot_id)
 
     def onLapsClear(self, *_) -> None:
         """
