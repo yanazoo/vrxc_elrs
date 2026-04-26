@@ -153,15 +153,20 @@ class SerialConnection:
 
     def _recieve(self) -> None:
         """
-        Recieves data from the socket and adds it to the queue
+        Recieves data from the serial port and adds it to the parsing queue.
+        Uses blocking read to avoid polling delay.
         """
         assert self._connection is not None
 
         try:
             while self._connected:
-                data = self._connection.read_all()
-                self._parsing_queue.put(data)
-                gevent.sleep(0.2)
+                # Block until at least one byte arrives (timeout set in connect)
+                byte = self._connection.read(1)
+                if not byte:
+                    continue
+                # Drain any additional bytes already buffered
+                remaining = self._connection.read_all()
+                self._parsing_queue.put(byte + remaining)
 
         finally:
             self._connected = False
@@ -277,11 +282,12 @@ class SocketConnection:
 
     def _recieve(self) -> None:
         """
-        Recieves data from the socket and adds it to the queue
+        Recieves data from the socket and adds it to the queue.
+        Uses a large buffer to handle burst data in one recv call.
         """
         try:
             while self._connected:
-                data = self._socket.recv(128)
+                data = self._socket.recv(4096)
                 if not data:
                     break
                 for packet in MSPPacket.packets_from_bytes(data):
