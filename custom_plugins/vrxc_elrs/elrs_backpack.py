@@ -713,9 +713,9 @@ class ELRSBackpack(VRxController):
             pilot_id = result["pilot_id"]
 
             if self._rhapi.db.option("_position_mode") != "1":
-                message = f"LAP: {result['laps'] + 1}"
+                message = f"LAP: {result['laps']}"
             else:
-                message = f"POSN: {str(result['position']).upper()} | LAP: {result['laps'] + 1}"
+                message = f"POSN: {str(result['position']).upper()} | LAP: {result['laps']}"
 
             last = self._last_sent_osd.setdefault(pilot_id, {})
             if last.get("pos") == message:
