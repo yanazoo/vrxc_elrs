@@ -129,7 +129,7 @@ def initialize(rhapi: RHAPI.RHAPI):
 
     _rd_bindphrase = UIField(
         "_rd_bindphrase",
-        "レースディレクター ELRS BP バインドフレーズ",
+        "レースディレクター バインドフレーズ",
         desc="設定するとレースディレクターのゴーグルにもOSDを送信します",
         field_type=UIFieldType.TEXT,
     )
