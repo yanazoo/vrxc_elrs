@@ -234,7 +234,7 @@ class SocketConnection:
                 self._socket.close()
                 return False
 
-        except TimeoutError:
+        except OSError:
             self._socket.close()
             return False
 

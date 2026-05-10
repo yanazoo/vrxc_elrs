@@ -50,6 +50,7 @@ def initialize(rhapi: RHAPI.RHAPI):
         "送信機からレースを開始",
         desc="レースディレクターが送信機からレースを開始できます",
         field_type=UIFieldType.CHECKBOX,
+        value="1",
     )
     rhapi.fields.register_option(_race_start, "elrs_settings")
 
@@ -58,6 +59,7 @@ def initialize(rhapi: RHAPI.RHAPI):
         "送信機からレースを停止",
         desc="レースディレクターが送信機からレースを停止できます",
         field_type=UIFieldType.CHECKBOX,
+        value="1",
     )
     rhapi.fields.register_option(_race_stop, "elrs_settings")
 
@@ -107,9 +109,17 @@ def initialize(rhapi: RHAPI.RHAPI):
         "再接続間隔（秒）",
         desc="自動再接続を試みる間隔（3秒以上）",
         field_type=UIFieldType.BASIC_INT,
-        value=10,
+        value=3,
     )
     rhapi.fields.register_option(_reconnect_interval, "elrs_settings")
+
+    _rd_bindphrase = UIField(
+        "_rd_bindphrase",
+        "レースディレクター ELRS BP バインドフレーズ",
+        desc="設定するとレースディレクターのゴーグルにもOSDを送信します",
+        field_type=UIFieldType.TEXT,
+    )
+    rhapi.fields.register_option(_rd_bindphrase, "elrs_settings")
 
     _heat_name = UIField(
         "_heat_name",
@@ -294,7 +304,7 @@ def initialize(rhapi: RHAPI.RHAPI):
     _eventname_pos = UIField("_eventname_pos", "イベント名の位置 (行,列)", desc="例: 0,-1　列が負=自動センタリング", field_type=UIFieldType.TEXT, value="0,-1")
     rhapi.fields.register_option(_eventname_pos, "elrs_vrxc")
 
-    _bestlap_pos = UIField("_bestlap_pos", "ベストラップの位置 (行,列)", desc="例: 1,-1　列が負=自動センタリング", field_type=UIFieldType.TEXT, value="1,-1")
+    _bestlap_pos = UIField("_bestlap_pos", "ベストラップの位置 (行,列)", desc="例: 12,0　列が負=自動センタリング", field_type=UIFieldType.TEXT, value="12,0")
     rhapi.fields.register_option(_bestlap_pos, "elrs_vrxc")
 
     _announcement_pos = UIField("_announcement_pos", "アナウンスの位置 (行,列)", desc="例: 3,-1　列が負=自動センタリング", field_type=UIFieldType.TEXT, value="3,-1")
@@ -315,7 +325,7 @@ def initialize(rhapi: RHAPI.RHAPI):
     _results_pos = UIField("_results_pos", "結果の位置 (行,列)  ※2行使用", desc="例: 13,-1　列が負=自動センタリング", field_type=UIFieldType.TEXT, value="13,-1")
     rhapi.fields.register_option(_results_pos, "elrs_vrxc")
 
-    _raceclock_pos = UIField("_raceclock_pos", "レースクロックの位置 (行,列)", desc="例: 17,-1　列が負=自動センタリング", field_type=UIFieldType.TEXT, value="17,-1")
+    _raceclock_pos = UIField("_raceclock_pos", "レースクロックの位置 (行,列)", desc="例: 3,-1　列が負=自動センタリング", field_type=UIFieldType.TEXT, value="3,-1")
     rhapi.fields.register_option(_raceclock_pos, "elrs_vrxc")
 
     #
