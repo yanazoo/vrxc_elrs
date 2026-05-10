@@ -239,10 +239,21 @@ class ELRSBackpack(VRxController):
                     if packet.function == MSPTypes.MSP_ELRS_BACKPACK_SET_RECORDING_STATE:
                         itr = packet.iterate_payload()
                         val = next(itr)
-                        if val == 0x00:
-                            self.stop_race()
-                        elif val == 0x01:
-                            self.start_race()
+                        switch_type = self._rhapi.db.option("_tx_switch_type") or "toggle"
+                        if switch_type == "push":
+                            # Push: react only on press (0x01); toggle race state
+                            if val == 0x01:
+                                status = self._rhapi.race.status
+                                if status == RaceStatus.READY:
+                                    self.start_race()
+                                elif status in (RaceStatus.STAGING, RaceStatus.RACING):
+                                    self.stop_race()
+                        else:
+                            # Toggle: 0x01 = start, 0x00 = stop
+                            if val == 0x00:
+                                self.stop_race()
+                            elif val == 0x01:
+                                self.start_race()
 
         except KeyboardInterrupt:
             logger.error("Stopping backpack connector greenlet")
@@ -313,6 +324,14 @@ class ELRSBackpack(VRxController):
     def center_osd(self, len_: int) -> int:
         offset = len_ // 2
         return max(50 // 2 - offset, 0)
+
+    def _format_time(self, ms: int) -> str:
+        """Format milliseconds to M:SS.T (tenths of a second)."""
+        total_s = ms / 1000
+        m = int(total_s // 60)
+        s = int(total_s % 60)
+        t = int((total_s % 1) * 10)
+        return f"{m}:{s:02d}.{t}"
 
     def _get_pos(self, pos_option: str, text: str = "") -> tuple[int, int]:
         """Parse a 'row,col' option string. Negative col means auto-center."""
@@ -714,10 +733,7 @@ class ELRSBackpack(VRxController):
 
         def lap_results(result, gap_info):
             pilot_id = result["pilot_id"]
-            formatted_time = self._rhapi.utils.format_split_time_to_str(
-                gap_info.current.last_lap_time, "{m}:{s}.{d}"
-            )
-            message = formatted_time
+            message = self._format_time(gap_info.current.last_lap_time)
             lapresults_row, start_col = self._get_pos("_lapresults_pos", message)
 
             uid = self.get_pilot_uid(pilot_id)
@@ -739,10 +755,7 @@ class ELRSBackpack(VRxController):
             if self._rhapi.db.option("_show_totaltime") != "1":
                 return
             pilot_id = result["pilot_id"]
-            formatted = self._rhapi.utils.format_split_time_to_str(
-                gap_info.current.total_time_laps, "{m}:{s}.{d}"
-            )
-            message = f"TOTAL: {formatted}"
+            message = f"TOTAL: {self._format_time(gap_info.current.total_time_laps)}"
             totaltime_row, start_col = self._get_pos("_totaltime_pos", message)
             uid = self.get_pilot_uid(pilot_id)
             with self._queue_lock:
@@ -759,9 +772,7 @@ class ELRSBackpack(VRxController):
             stored = self._best_laps.get(pilot_id)
             if stored is None or current_ms < stored:
                 self._best_laps[pilot_id] = current_ms
-            best_ms = self._best_laps[pilot_id]
-            formatted = self._rhapi.utils.format_split_time_to_str(best_ms, "{m}:{s}.{d}")
-            message = f"BEST: {formatted}"
+            message = f"BEST: {self._format_time(self._best_laps[pilot_id])}"
             bestlap_row, start_col = self._get_pos("_bestlap_pos", message)
             uid = self.get_pilot_uid(pilot_id)
             with self._queue_lock:

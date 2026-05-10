@@ -63,6 +63,19 @@ def initialize(rhapi: RHAPI.RHAPI):
     )
     rhapi.fields.register_option(_race_stop, "elrs_settings")
 
+    switch_opts = [
+        UIFieldSelectOption(value="toggle", label="トグルスイッチ（ON/OFF 2ポジション）"),
+        UIFieldSelectOption(value="push", label="プッシュスイッチ（押すたびに切り替え）"),
+    ]
+    _tx_switch_type = UIField(
+        "_tx_switch_type",
+        "送信機スイッチタイプ",
+        desc="トグル：スイッチの位置でON/OFFを切り替え／プッシュ：押すたびにレース開始・停止を切り替え",
+        field_type=UIFieldType.SELECT,
+        options=switch_opts,
+    )
+    rhapi.fields.register_option(_tx_switch_type, "elrs_settings")
+
     _autosave_on_stop = UIField(
         "_autosave_on_stop",
         "停止時に自動保存",
