@@ -64,8 +64,8 @@ def initialize(rhapi: RHAPI.RHAPI):
     rhapi.fields.register_option(_race_stop, "elrs_settings")
 
     switch_opts = [
-        UIFieldSelectOption(value="toggle", label="トグルスイッチ（ON/OFF 2ポジション）"),
         UIFieldSelectOption(value="push", label="プッシュスイッチ（押すたびに切り替え）"),
+        UIFieldSelectOption(value="toggle", label="トグルスイッチ（ON/OFF 2ポジション）"),
     ]
     _tx_switch_type = UIField(
         "_tx_switch_type",
@@ -73,6 +73,7 @@ def initialize(rhapi: RHAPI.RHAPI):
         desc="トグル：スイッチの位置でON/OFFを切り替え／プッシュ：押すたびにレース開始・停止を切り替え",
         field_type=UIFieldType.SELECT,
         options=switch_opts,
+        value="push",
     )
     rhapi.fields.register_option(_tx_switch_type, "elrs_settings")
 
@@ -128,7 +129,7 @@ def initialize(rhapi: RHAPI.RHAPI):
 
     _rd_bindphrase = UIField(
         "_rd_bindphrase",
-        "レースディレクター ELRS BP バインドフレーズ",
+        "レースディレクター バインドフレーズ",
         desc="設定するとレースディレクターのゴーグルにもOSDを送信します",
         field_type=UIFieldType.TEXT,
     )
