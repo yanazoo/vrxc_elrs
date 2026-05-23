@@ -1,3 +1,214 @@
+import logging
+from dataclasses import dataclass
+from enum import Enum
+from typing import Protocol, Union
+
+import gevent
+import gevent.queue
+import gevent.socket as socket
+import serial
+import serial.tools.list_ports
+from gevent.queue import Queue
+
+from .msp import MSPPacket, MSPPacketType, MSPTypes
+
+SOCKET_PORT = 8080
+AVOIDED_PORTS = {"/dev/ttyAMA0", "/dev/ttyAMA10", "COM1"}
+
+logger = logging.getLogger(__name__)
+
+
+class BackpackConnection(Protocol):
+    """
+    Protocol for backpack connections
+    """
+
+    connected: bool
+
+    def __init__(self, send_queue: Queue, recieve_queue: Queue): ...
+
+    def connect(self, **kwargs) -> bool: ...
+
+    def disconnect(self): ...
+
+
+@dataclass
+class ConnectionType:
+    """
+    Dataclass for custom connection enum
+    """
+
+    type_: type["BackpackConnection"]
+    id_: int
+
+
+class SerialConnection:
+    """
+    Backpack over serial connection
+    """
+
+    _send_greenlet: Union[gevent.Greenlet, None] = None
+    _recieve_greenlet: Union[gevent.Greenlet, None] = None
+    _parsing_greenlet: Union[gevent.Greenlet, None] = None
+
+    def __init__(self, send_queue: Queue, recieve_queue: Queue):
+        self._connected = False
+        self._send_queue = send_queue
+        self._recieve_queue = recieve_queue
+        self._connection: Union[serial.Serial, None] = None
+        self._parsing_queue = gevent.queue.Queue()
+
+    @property
+    def connected(self) -> bool:
+        return self._connected
+
+    def connect(self) -> bool:
+        packet = MSPPacket()
+        packet.set_function(MSPTypes.MSP_ELRS_GET_BACKPACK_VERSION)
+
+        logger.info("Attempting to find backpack")
+
+        avaliable_port = {port.device for port in serial.tools.list_ports.comports()}
+
+        for port in avaliable_port - AVOIDED_PORTS:
+
+            try:
+                connection = serial.Serial(
+                    port=port,
+                    baudrate=460800,
+                    bytesize=8,
+                    parity="N",
+                    stopbits=1,
+                    timeout=5,
+                    xonxoff=0,
+                    rtscts=0,
+                    write_timeout=5,
+                )
+            except:
+                logger.warning(
+                    "Failed to open serial device. Attempting to connect to new device..."
+                )
+                continue
+
+            # Some devkits need extra time to establish the connection
+            gevent.sleep(2)
+
+            # Clear out any previous data in the serial buffer
+            connection.read_all()
+
+            try:
+                connection.write(packet.get_packet())
+            except:
+                logger.error(
+                    "Failed to write to open serial device. Attempting to connect to new device..."
+                )
+                connection.close()
+                continue
+
+            gevent.sleep(0.2)
+
+            data = connection.read_all()
+            for packet in MSPPacket.packets_from_bytes(data):
+                if (
+                    packet.type_ == MSPPacketType.RESPONSE
+                    and packet.function == MSPTypes.MSP_ELRS_GET_BACKPACK_VERSION
+                ):
+                    self._connection = connection
+                    self._connected = True
+                    break
+
+            if self._connected:
+                break
+
+        else:
+            return False
+
+        self._parsing_greenlet = gevent.spawn(self._parser)
+        self._send_greenlet = gevent.spawn(self._send)
+        self._recieve_greenlet = gevent.spawn(self._recieve)
+        return True
+
+    def _send(self) -> None:
+        """
+        Sends data from the queue over the socket
+        """
+        assert self._connection is not None
+
+        try:
+            while self._connected:
+                packet: MSPPacket = self._send_queue.get()
+                self._connection.write(packet.get_packet())
+
+        finally:
+            self._connected = False
+            self._send_greenlet = None
+            self.disconnect()
+
+    def _parser(self) -> None:
+        """
+        Parses incoming data
+        """
+        for packet in MSPPacket.packets_from_bytes_queue(self._parsing_queue):
+            self._recieve_queue.put(packet)
+
+    def _recieve(self) -> None:
+        """
+        Recieves data from the serial port and adds it to the parsing queue.
+        Uses blocking read to avoid polling delay.
+        """
+        assert self._connection is not None
+
+        try:
+            while self._connected:
+                # Block until at least one byte arrives (timeout set in connect)
+                byte = self._connection.read(1)
+                if not byte:
+                    continue
+                # Drain any additional bytes already buffered
+                remaining = self._connection.read_all()
+                self._parsing_queue.put(byte + remaining)
+
+        finally:
+            self._connected = False
+            self._recieve_greenlet = None
+            self.disconnect()
+
+    def disconnect(self):
+        """
+        _summary_
+        """
+        self._connected = False
+
+        if self._parsing_greenlet is not None:
+            self._parsing_greenlet.kill()
+
+        if self._send_greenlet is not None:
+            self._send_greenlet.kill()
+
+        if self._recieve_greenlet is not None:
+            self._recieve_greenlet.kill()
+
+        self._connection.close()
+
+
+class SocketConnection:
+    """
+    Backpack over socket connection
+    """
+
+    _send_greenlet: Union[gevent.Greenlet, None] = None
+    _recieve_greenlet: Union[gevent.Greenlet, None] = None
+
+    def __init__(self, send_queue: Queue, recieve_queue: Queue):
+        self._connected = False
+        self._send_queue = send_queue
+        self._recieve_queue = recieve_queue
+        self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    @property
+    def connected(self) -> bool:
+        return self._connected
+
     def connect(self, ip_addr: str) -> bool:
         """
         Establishes the socket connection
@@ -28,22 +239,87 @@
             return False
 
         self._socket.settimeout(None)
+        # Disable Nagle's algorithm so each write is sent immediately
         self._socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-
-        # --- TCP keepalive: idle中の死んだ/ハーフオープン接続を検知する ---
-        # これが無いと、バックパックが再起動/WiFi断でFINを送れずに消えた場合、
-        # recv() が永久にブロックして _connected が True のまま残り、
-        # 再接続ループが発火しない。5秒idleで開始→2秒間隔→3回失敗で切断扱い。
-        self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-        try:
-            self._socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 5)
-            self._socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 2)
-            self._socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)
-        except (AttributeError, OSError):
-            pass  # プラットフォームによっては未対応
-        # -----------------------------------------------------------------
 
         self._send_greenlet = gevent.spawn(self._send)
         self._recieve_greenlet = gevent.spawn(self._recieve)
 
         return True
+
+    def _send(self) -> None:
+        """
+        Sends data from the queue over the socket.
+        Drains all packets queued together into one TCP write to minimize latency.
+        """
+        try:
+            while self._connected:
+                # Block until at least one packet is available
+                first: MSPPacket = self._send_queue.get()
+                data = bytearray(first.get_packet())
+
+                # Drain any packets already waiting (queued in same lock section)
+                while True:
+                    try:
+                        pkt: MSPPacket = self._send_queue.get_nowait()
+                        data += pkt.get_packet()
+                    except gevent.queue.Empty:
+                        break
+
+                timeout = gevent.Timeout(1)
+                timeout.start()
+                try:
+                    self._socket.sendall(bytes(data))
+                finally:
+                    timeout.close()
+        except (gevent._socketcommon.cancel_wait_ex, OSError, gevent.Timeout):
+            ...
+
+        finally:
+            self._connected = False
+            self._send_greenlet = None
+            self.disconnect()
+
+    def _recieve(self) -> None:
+        """
+        Recieves data from the socket and adds it to the queue.
+        Uses a large buffer to handle burst data in one recv call.
+        """
+        try:
+            while self._connected:
+                data = self._socket.recv(4096)
+                if not data:
+                    break
+                for packet in MSPPacket.packets_from_bytes(data):
+                    self._recieve_queue.put(packet)
+        except (gevent._socketcommon.cancel_wait_ex, OSError):
+            ...
+
+        finally:
+            self._connected = False
+            self._recieve_greenlet = None
+            self.disconnect()
+
+    def disconnect(self):
+        """
+        Disconnects the socket
+        """
+        self._connected = False
+
+        if self._send_greenlet is not None:
+            self._send_greenlet.kill()
+
+        if self._recieve_greenlet is not None:
+            self._recieve_greenlet.kill()
+
+        self._socket.close()
+
+
+class ConnectionTypeEnum(ConnectionType, Enum):
+    """
+    Enum for different connection selections
+    """
+
+    USB = SerialConnection, 1
+    ONBOARD = SerialConnection, 2
+    SOCKET = SocketConnection, 3
