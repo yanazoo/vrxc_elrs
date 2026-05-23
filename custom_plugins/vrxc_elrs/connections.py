@@ -239,8 +239,20 @@ class SocketConnection:
             return False
 
         self._socket.settimeout(None)
-        # Disable Nagle's algorithm so each write is sent immediately
         self._socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+
+        # --- TCP keepalive: idle中の死んだ/ハーフオープン接続を検知する ---
+        # これが無いと、バックパックが再起動/WiFi断でFINを送れずに消えた場合、
+        # recv() が永久にブロックして _connected が True のまま残り、
+        # 再接続ループが発火しない。5秒idleで開始→2秒間隔→3回失敗で切断扱い。
+        self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        try:
+            self._socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 5)
+            self._socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 2)
+            self._socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)
+        except (AttributeError, OSError):
+            pass  # プラットフォームによっては未対応
+        # -----------------------------------------------------------------
 
         self._send_greenlet = gevent.spawn(self._send)
         self._recieve_greenlet = gevent.spawn(self._recieve)
