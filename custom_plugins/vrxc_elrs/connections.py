@@ -108,10 +108,10 @@ class SerialConnection:
             gevent.sleep(0.2)
 
             data = connection.read_all()
-            for packet in MSPPacket.packets_from_bytes(data):
+            for resp in MSPPacket.packets_from_bytes(data):
                 if (
-                    packet.type_ == MSPPacketType.RESPONSE
-                    and packet.function == MSPTypes.MSP_ELRS_GET_BACKPACK_VERSION
+                    resp.type_ == MSPPacketType.RESPONSE
+                    and resp.function == MSPTypes.MSP_ELRS_GET_BACKPACK_VERSION
                 ):
                     self._connection = connection
                     self._connected = True
@@ -188,7 +188,8 @@ class SerialConnection:
         if self._recieve_greenlet is not None:
             self._recieve_greenlet.kill()
 
-        self._connection.close()
+        if self._connection is not None:
+            self._connection.close()
 
 
 class SocketConnection:
