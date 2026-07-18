@@ -33,6 +33,9 @@ class ELRSBackpack(VRxController):
         self._manual_disconnect = True
         self._last_sent_osd: dict[int, dict[str, str]] = {}
         self._best_laps: dict[int, int] = {}
+        # Per-pilot generation counter: a delayed row-clear only fires if no
+        # newer lap has redrawn the row in the meantime.
+        self._lap_clear_token: dict[int, int] = {}
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -333,6 +336,13 @@ class ELRSBackpack(VRxController):
         t = int((total_s % 1) * 10)
         return f"{m}:{s:02d}.{t}"
 
+    def _option_float(self, name: str, default: float) -> float:
+        """Read a numeric option defensively; RH may hand back str or None."""
+        try:
+            return float(self._rhapi.db.option(name))
+        except (TypeError, ValueError):
+            return default
+
     def _get_pos(self, pos_option: str, text: str = "") -> tuple[int, int]:
         """Parse a 'row,col' option string. Negative col means auto-center."""
         try:
@@ -540,6 +550,7 @@ class ELRSBackpack(VRxController):
         # Clear dedup caches so every pilot sees fresh OSD on each new race.
         self._last_sent_osd.clear()
         self._best_laps.clear()
+        self._lap_clear_token.clear()
 
         use_heat_name = self._rhapi.db.option("_heat_name") == "1"
         use_round_num = self._rhapi.db.option("_round_num") == "1"
@@ -630,7 +641,7 @@ class ELRSBackpack(VRxController):
                 self.send_display_osd()
                 self.reset_send_uid()
 
-            gevent.sleep(self._rhapi.db.option("_racestart_uptime") * 1e-1)
+            gevent.sleep(self._option_float("_racestart_uptime", 5) * 1e-1)
 
             with self._queue_lock:
                 self.set_send_uid(uid)
@@ -658,7 +669,7 @@ class ELRSBackpack(VRxController):
                 self.send_display_osd()
                 self.reset_send_uid()
 
-            gevent.sleep(self._rhapi.db.option("_finish_uptime") * 1e-1)
+            gevent.sleep(self._option_float("_finish_uptime", 20) * 1e-1)
 
             with self._queue_lock:
                 self.set_send_uid(uid)
@@ -731,53 +742,64 @@ class ELRSBackpack(VRxController):
                 self.send_display_osd()
                 self.reset_send_uid()
 
-        def lap_results(result, gap_info):
+        def lap_pilot_osd(result, gap_info):
+            """
+            Send everything for the pilot who just lapped (position/lap count,
+            lap time, best lap, total time) as ONE burst with a single
+            SET_SEND_UID. Splitting this into separate bursts made the bridge
+            re-init ESP-NOW up to 4x per lap, which could drop the lap time.
+            """
             pilot_id = result["pilot_id"]
-            message = self._format_time(gap_info.current.last_lap_time)
-            lapresults_row, start_col = self._get_pos("_lapresults_pos", message)
+
+            if self._rhapi.db.option("_position_mode") != "1":
+                pos_message = f"LAP: {result['laps']}"
+            else:
+                pos_message = f"POSN: {str(result['position']).upper()} | LAP: {result['laps']}"
+            self._last_sent_osd.setdefault(pilot_id, {})["pos"] = pos_message
+            currentlap_row, pos_col = self._get_pos("_currentlap_pos", pos_message)
+
+            lap_message = self._format_time(gap_info.current.last_lap_time)
+            lapresults_row, lap_col = self._get_pos("_lapresults_pos", lap_message)
+
+            show_best = self._rhapi.db.option("_show_bestlap") == "1"
+            if show_best:
+                current_ms = gap_info.current.last_lap_time
+                stored = self._best_laps.get(pilot_id)
+                if stored is None or current_ms < stored:
+                    self._best_laps[pilot_id] = current_ms
+                best_message = f"BEST: {self._format_time(self._best_laps[pilot_id])}"
+                bestlap_row, best_col = self._get_pos("_bestlap_pos", best_message)
+
+            show_total = self._rhapi.db.option("_show_totaltime") == "1"
+            if show_total:
+                total_message = f"TOTAL: {self._format_time(gap_info.current.total_time_laps)}"
+                totaltime_row, total_col = self._get_pos("_totaltime_pos", total_message)
+
+            token = self._lap_clear_token.get(pilot_id, 0) + 1
+            self._lap_clear_token[pilot_id] = token
 
             uid = self.get_pilot_uid(pilot_id)
             with self._queue_lock:
                 self.set_send_uid(uid)
-                self.send_osd_text(lapresults_row, start_col, message)
+                self.send_clear_osd_row(currentlap_row)
+                self.send_osd_text(currentlap_row, pos_col, pos_message)
+                self.send_osd_text(lapresults_row, lap_col, lap_message)
+                if show_best:
+                    self.send_osd_text(bestlap_row, best_col, best_message)
+                if show_total:
+                    self.send_osd_text(totaltime_row, total_col, total_message)
                 self.send_display_osd()
                 self.reset_send_uid()
 
-            gevent.sleep(self._rhapi.db.option("_results_uptime") * 1e-1)
+            gevent.sleep(self._option_float("_results_uptime", 40) * 1e-1)
+
+            # A newer lap has already redrawn the row — don't wipe it.
+            if self._lap_clear_token.get(pilot_id) != token:
+                return
 
             with self._queue_lock:
                 self.set_send_uid(uid)
                 self.send_clear_osd_row(lapresults_row)
-                self.send_display_osd()
-                self.reset_send_uid()
-
-        def show_totaltime(result, gap_info):
-            if self._rhapi.db.option("_show_totaltime") != "1":
-                return
-            pilot_id = result["pilot_id"]
-            message = f"TOTAL: {self._format_time(gap_info.current.total_time_laps)}"
-            totaltime_row, start_col = self._get_pos("_totaltime_pos", message)
-            uid = self.get_pilot_uid(pilot_id)
-            with self._queue_lock:
-                self.set_send_uid(uid)
-                self.send_osd_text(totaltime_row, start_col, message)
-                self.send_display_osd()
-                self.reset_send_uid()
-
-        def show_bestlap(result, gap_info):
-            if self._rhapi.db.option("_show_bestlap") != "1":
-                return
-            pilot_id = result["pilot_id"]
-            current_ms = gap_info.current.last_lap_time
-            stored = self._best_laps.get(pilot_id)
-            if stored is None or current_ms < stored:
-                self._best_laps[pilot_id] = current_ms
-            message = f"BEST: {self._format_time(self._best_laps[pilot_id])}"
-            bestlap_row, start_col = self._get_pos("_bestlap_pos", message)
-            uid = self.get_pilot_uid(pilot_id)
-            with self._queue_lock:
-                self.set_send_uid(uid)
-                self.send_osd_text(bestlap_row, start_col, message)
                 self.send_display_osd()
                 self.reset_send_uid()
 
@@ -794,12 +816,10 @@ class ELRSBackpack(VRxController):
                 self._rhapi.db.pilot_attribute_value(result["pilot_id"], "elrs_active") == "1"
             ):
                 if not pilots_completion[result["pilot_id"]]:
-                    gevent.spawn(update_pos, result)
-
                     if result["pilot_id"] == args["pilot_id"] and result["laps"] > 0:
-                        gevent.spawn(lap_results, result, args["gap_info"])
-                        gevent.spawn(show_bestlap, result, args["gap_info"])
-                        gevent.spawn(show_totaltime, result, args["gap_info"])
+                        gevent.spawn(lap_pilot_osd, result, args["gap_info"])
+                    else:
+                        gevent.spawn(update_pos, result)
 
     def onLapDelete(self, *_) -> None:
         if not self._backpack_connected:
@@ -856,7 +876,7 @@ class ELRSBackpack(VRxController):
                 self.send_display_osd()
                 self.reset_send_uid()
 
-            gevent.sleep(self._rhapi.db.option("_finish_uptime") * 1e-1)
+            gevent.sleep(self._option_float("_finish_uptime", 20) * 1e-1)
 
             with self._queue_lock:
                 self.set_send_uid(uid)
@@ -898,6 +918,7 @@ class ELRSBackpack(VRxController):
     def onLapsClear(self, *_) -> None:
         self._best_laps.clear()
         self._last_sent_osd.clear()
+        self._lap_clear_token.clear()
 
         if not self._backpack_connected:
             return
@@ -935,7 +956,7 @@ class ELRSBackpack(VRxController):
                 self.send_display_osd()
                 self.reset_send_uid()
 
-            gevent.sleep(self._rhapi.db.option("_announcement_uptime") * 1e-1)
+            gevent.sleep(self._option_float("_announcement_uptime", 50) * 1e-1)
 
             with self._queue_lock:
                 self.set_send_uid(uid)
