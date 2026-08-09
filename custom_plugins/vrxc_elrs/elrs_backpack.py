@@ -15,6 +15,14 @@ from .msp import MSPPacket, MSPPacketType, MSPTypes
 
 logger = logging.getLogger(__name__)
 
+# A lap time is written to the OSD exactly once, so a single MSP packet lost
+# anywhere on the path (UART bit error between XIAO and Wrover, ESP-NOW retry
+# exhaustion, a UID switch landing mid-burst) leaves the row blank for the
+# whole lap. Redrawing the same rows a couple of times makes any single loss
+# invisible. The redraws are idempotent - they rewrite text without clearing.
+LAP_OSD_REPEATS = 2
+LAP_OSD_REPEAT_INTERVAL = 0.8
+
 
 class ELRSBackpack(VRxController):
     _connection: BackpackConnection | None = None
@@ -748,6 +756,10 @@ class ELRSBackpack(VRxController):
             lap time, best lap, total time) as ONE burst with a single
             SET_SEND_UID. Splitting this into separate bursts made the bridge
             re-init ESP-NOW up to 4x per lap, which could drop the lap time.
+
+            The burst is then redrawn LAP_OSD_REPEATS times before the row is
+            cleared, so losing any single packet no longer blanks the lap time
+            for the rest of the lap.
             """
             pilot_id = result["pilot_id"]
 
@@ -779,25 +791,52 @@ class ELRSBackpack(VRxController):
             self._lap_clear_token[pilot_id] = token
 
             uid = self.get_pilot_uid(pilot_id)
+
+            def draw(clear_first: bool) -> bool:
+                """
+                Draw this lap's rows. Returns False if a newer lap has taken
+                over, in which case nothing is sent. The token is checked under
+                the lock so the check and the send it guards cannot be read
+                apart - gevent's FIFO lock happens to make the two adjacent
+                today, but this does not rely on that.
+                """
+                with self._queue_lock:
+                    if self._lap_clear_token.get(pilot_id) != token:
+                        return False
+                    self.set_send_uid(uid)
+                    if clear_first:
+                        self.send_clear_osd_row(currentlap_row)
+                    self.send_osd_text(currentlap_row, pos_col, pos_message)
+                    self.send_osd_text(lapresults_row, lap_col, lap_message)
+                    if show_best:
+                        self.send_osd_text(bestlap_row, best_col, best_message)
+                    if show_total:
+                        self.send_osd_text(totaltime_row, total_col, total_message)
+                    self.send_display_osd()
+                    self.reset_send_uid()
+                return True
+
+            draw(clear_first=True)
+
+            # Redraw a couple of times so one lost packet can't blank the row.
+            # Redraws never clear, so a loss can only delay the text, never
+            # erase what is already on screen.
+            uptime = self._option_float("_results_uptime", 40) * 1e-1
+            elapsed = 0.0
+            for _ in range(LAP_OSD_REPEATS):
+                if elapsed + LAP_OSD_REPEAT_INTERVAL >= uptime:
+                    break
+                gevent.sleep(LAP_OSD_REPEAT_INTERVAL)
+                elapsed += LAP_OSD_REPEAT_INTERVAL
+                if not draw(clear_first=False):
+                    return
+
+            gevent.sleep(max(uptime - elapsed, 0.0))
+
             with self._queue_lock:
-                self.set_send_uid(uid)
-                self.send_clear_osd_row(currentlap_row)
-                self.send_osd_text(currentlap_row, pos_col, pos_message)
-                self.send_osd_text(lapresults_row, lap_col, lap_message)
-                if show_best:
-                    self.send_osd_text(bestlap_row, best_col, best_message)
-                if show_total:
-                    self.send_osd_text(totaltime_row, total_col, total_message)
-                self.send_display_osd()
-                self.reset_send_uid()
-
-            gevent.sleep(self._option_float("_results_uptime", 40) * 1e-1)
-
-            # A newer lap has already redrawn the row — don't wipe it.
-            if self._lap_clear_token.get(pilot_id) != token:
-                return
-
-            with self._queue_lock:
+                # A newer lap has already redrawn the row — don't wipe it.
+                if self._lap_clear_token.get(pilot_id) != token:
+                    return
                 self.set_send_uid(uid)
                 self.send_clear_osd_row(lapresults_row)
                 self.send_display_osd()
