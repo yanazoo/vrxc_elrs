@@ -106,6 +106,7 @@ def initialize(rhapi: RHAPI.RHAPI):
         desc="バックパックの接続タイプを選択します",
         field_type=UIFieldType.SELECT,
         options=conn_opts,
+        value=ConnectionTypeEnum.SOCKET.id_,
     )
     rhapi.fields.register_option(_conn_opt, "elrs_settings")
 
@@ -132,6 +133,7 @@ def initialize(rhapi: RHAPI.RHAPI):
         "レースディレクター バインドフレーズ",
         desc="設定するとレースディレクターのゴーグルにもOSDを送信します",
         field_type=UIFieldType.TEXT,
+        value="yanazoo",
     )
     rhapi.fields.register_option(_rd_bindphrase, "elrs_settings")
 
@@ -172,6 +174,7 @@ def initialize(rhapi: RHAPI.RHAPI):
         "ベストラップを常に表示",
         desc="ラップ記録のたびに自己ベストを専用行に表示します",
         field_type=UIFieldType.CHECKBOX,
+        value="1",
     )
     rhapi.fields.register_option(_show_bestlap, "elrs_vrxc")
 
@@ -180,6 +183,7 @@ def initialize(rhapi: RHAPI.RHAPI):
         "現在の順位とラップを表示",
         desc="オフ時は現在のラップのみ表示",
         field_type=UIFieldType.CHECKBOX,
+        value="1",
     )
     rhapi.fields.register_option(_position_mode, "elrs_vrxc")
 
@@ -196,6 +200,7 @@ def initialize(rhapi: RHAPI.RHAPI):
         "レースクロックを表示",
         desc="レース中、経過時間を全パイロットのOSDに毎秒表示します",
         field_type=UIFieldType.CHECKBOX,
+        value="1",
     )
     rhapi.fields.register_option(_show_raceclock, "elrs_vrxc")
 
@@ -204,6 +209,7 @@ def initialize(rhapi: RHAPI.RHAPI):
         "レース後の結果を表示",
         desc="レース終了時にパイロットの結果を表示します",
         field_type=UIFieldType.CHECKBOX,
+        value="1",
     )
     rhapi.fields.register_option(_results_mode, "elrs_vrxc")
 
@@ -216,7 +222,7 @@ def initialize(rhapi: RHAPI.RHAPI):
         "ステージングメッセージ",
         desc="小文字はシンボルとして使用されます",
         field_type=UIFieldType.TEXT,
-        value="ARM NOW",
+        value="w ARM NOW x",
     )
     rhapi.fields.register_option(_racestage_message, "elrs_vrxc")
 
@@ -225,7 +231,7 @@ def initialize(rhapi: RHAPI.RHAPI):
         "レーススタートメッセージ",
         desc="小文字はシンボルとして使用されます",
         field_type=UIFieldType.TEXT,
-        value="GO!",
+        value="w   GO!   x",
     )
     rhapi.fields.register_option(_racestart_message, "elrs_vrxc")
 
@@ -234,7 +240,7 @@ def initialize(rhapi: RHAPI.RHAPI):
         "パイロット完了メッセージ",
         desc="小文字はシンボルとして使用されます",
         field_type=UIFieldType.TEXT,
-        value="FINISHED!",
+        value="w FINISHED! x",
     )
     rhapi.fields.register_option(_pilotdone_message, "elrs_vrxc")
 
@@ -243,7 +249,7 @@ def initialize(rhapi: RHAPI.RHAPI):
         "レース終了メッセージ",
         desc="小文字はシンボルとして使用されます",
         field_type=UIFieldType.TEXT,
-        value="FINISH LAP!",
+        value="w FINISH LAP! x",
     )
     rhapi.fields.register_option(_racefinish_message, "elrs_vrxc")
 
@@ -252,7 +258,7 @@ def initialize(rhapi: RHAPI.RHAPI):
         "レース停止メッセージ",
         desc="小文字はシンボルとして使用されます",
         field_type=UIFieldType.TEXT,
-        value="LAND NOW!",
+        value="w  LAND NOW!  x",
     )
     rhapi.fields.register_option(_racestop_message, "elrs_vrxc")
 
@@ -283,7 +289,7 @@ def initialize(rhapi: RHAPI.RHAPI):
         "終了メッセージ表示時間",
         desc="デカ秒（×0.1秒）",
         field_type=UIFieldType.BASIC_INT,
-        value=20,
+        value=100,
     )
     rhapi.fields.register_option(_finish_uptime, "elrs_vrxc")
 
@@ -292,7 +298,7 @@ def initialize(rhapi: RHAPI.RHAPI):
         "ラップ結果表示時間",
         desc="デカ秒（×0.1秒）",
         field_type=UIFieldType.BASIC_INT,
-        value=40,
+        value=50,
     )
     rhapi.fields.register_option(_results_uptime, "elrs_vrxc")
 
@@ -327,19 +333,19 @@ def initialize(rhapi: RHAPI.RHAPI):
     _status_pos = UIField("_status_pos", "レースステータスの位置 (行,列)", desc="例: 5,-1　列が負=自動センタリング", field_type=UIFieldType.TEXT, value="5,-1")
     rhapi.fields.register_option(_status_pos, "elrs_vrxc")
 
-    _currentlap_pos = UIField("_currentlap_pos", "現在のラップ/順位の位置 (行,列)", desc="例: 0,-1　列が負=自動センタリング", field_type=UIFieldType.TEXT, value="0,-1")
+    _currentlap_pos = UIField("_currentlap_pos", "現在のラップ/順位の位置 (行,列)", desc="例: 1,-1　列が負=自動センタリング", field_type=UIFieldType.TEXT, value="1,-1")
     rhapi.fields.register_option(_currentlap_pos, "elrs_vrxc")
 
-    _totaltime_pos = UIField("_totaltime_pos", "トータルタイムの位置 (行,列)", desc="例: 2,-1　列が負=自動センタリング", field_type=UIFieldType.TEXT, value="2,-1")
+    _totaltime_pos = UIField("_totaltime_pos", "トータルタイムの位置 (行,列)", desc="例: 3,-1　列が負=自動センタリング", field_type=UIFieldType.TEXT, value="3,-1")
     rhapi.fields.register_option(_totaltime_pos, "elrs_vrxc")
 
-    _lapresults_pos = UIField("_lapresults_pos", "ラップタイムの位置 (行,列)", desc="例: 15,-1　列が負=自動センタリング", field_type=UIFieldType.TEXT, value="15,-1")
+    _lapresults_pos = UIField("_lapresults_pos", "ラップタイムの位置 (行,列)", desc="例: 8,-1　列が負=自動センタリング", field_type=UIFieldType.TEXT, value="8,-1")
     rhapi.fields.register_option(_lapresults_pos, "elrs_vrxc")
 
-    _results_pos = UIField("_results_pos", "結果の位置 (行,列)  ※2行使用", desc="例: 13,-1　列が負=自動センタリング", field_type=UIFieldType.TEXT, value="13,-1")
+    _results_pos = UIField("_results_pos", "結果の位置 (行,列)  ※2行使用", desc="例: 10,-1　列が負=自動センタリング", field_type=UIFieldType.TEXT, value="10,-1")
     rhapi.fields.register_option(_results_pos, "elrs_vrxc")
 
-    _raceclock_pos = UIField("_raceclock_pos", "レースクロックの位置 (行,列)", desc="例: 3,-1　列が負=自動センタリング", field_type=UIFieldType.TEXT, value="3,-1")
+    _raceclock_pos = UIField("_raceclock_pos", "レースクロックの位置 (行,列)", desc="例: 2,-1　列が負=自動センタリング", field_type=UIFieldType.TEXT, value="2,-1")
     rhapi.fields.register_option(_raceclock_pos, "elrs_vrxc")
 
     #
