@@ -69,6 +69,17 @@ class ELRSBackpack(VRxController):
             and self._rhapi.db.pilot_attribute_value(pid, "elrs_active") == "1"
         ]
 
+    def _pilot_finished(self, pilot_id: int) -> bool:
+        """True once this pilot has completed the race."""
+        try:
+            seats_finished = self._rhapi.race.seats_finished
+            for seat, pid in self._rhapi.race.pilots.items():
+                if pid == pilot_id:
+                    return bool(seats_finished[seat])
+        except Exception:
+            pass
+        return False
+
     def _broadcast_uids(self, pilot_ids: list[int], include_rd: bool = True) -> list[bytes]:
         """
         Build the list of UIDs to send OSD to.
@@ -803,10 +814,15 @@ class ELRSBackpack(VRxController):
                 with self._queue_lock:
                     if self._lap_clear_token.get(pilot_id) != token:
                         return False
+                    # Once the pilot is done, onRacePilotDone owns the position
+                    # row and has cleared it to make room for the result. A
+                    # redraw must not bring it back.
+                    show_pos = clear_first or not self._pilot_finished(pilot_id)
                     self.set_send_uid(uid)
                     if clear_first:
                         self.send_clear_osd_row(currentlap_row)
-                    self.send_osd_text(currentlap_row, pos_col, pos_message)
+                    if show_pos:
+                        self.send_osd_text(currentlap_row, pos_col, pos_message)
                     self.send_osd_text(lapresults_row, lap_col, lap_message)
                     if show_best:
                         self.send_osd_text(bestlap_row, best_col, best_message)
