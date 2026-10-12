@@ -51,29 +51,61 @@ This is a fork of [VRxC_ELRS](https://github.com/i-am-grub/VRxC_ELRS) by [Bryce 
 bash <(curl -fsSL https://raw.githubusercontent.com/yanazoo/vrxc_elrs/master/tools/install.sh)
 ```
 
-The script auto-detects your RotorHazard installation path and restarts the service.
+The script locates your RotorHazard installation itself and restarts the
+service, so it works regardless of the username or directory layout
+(NuclearHazard 4.4 renamed the user from `NuclearHazard` to `nuclear`, for
+example). It stages and validates the files before replacing anything, so a
+failed download leaves your working install untouched.
+
+Useful options:
+
+```bash
+# See where it would install, without changing anything
+bash <(curl -fsSL .../install.sh) --dry-run
+
+# Install a specific release instead of master
+bash <(curl -fsSL .../install.sh) --ref=v1.1.4
+
+# Install somewhere specific (if auto-detection picks the wrong place)
+bash <(curl -fsSL .../install.sh) --dir=/home/nuclear/rh-data/plugins
+```
 
 #### Manual installation
 
-```bash
-# NuclearHazard
-cd /home/NuclearHazard/rh-data/plugins
-git clone https://github.com/yanazoo/vrxc_elrs.git _tmp
-cp -r _tmp/custom_plugins/vrxc_elrs ./
-rm -rf _tmp
-sudo systemctl restart rotorhazard
+The plugin directory differs between images, so find yours first:
 
-# Standard Raspberry Pi
-cd /home/pi/RotorHazard/src/server/custom_plugins
-git clone https://github.com/yanazoo/vrxc_elrs.git _tmp
-cp -r _tmp/custom_plugins/vrxc_elrs ./
-rm -rf _tmp
+```bash
+# NuclearHazard images keep plugins in rh-data (survives RotorHazard updates)
+ls -d /home/*/rh-data/plugins
+
+# Other installs use custom_plugins under the server directory
+ls -d /home/*/RotorHazard/src/server/custom_plugins
+
+# Not sure where RotorHazard itself lives?
+systemctl show rotorhazard -p WorkingDirectory
+```
+
+Then copy the plugin into that directory:
+
+```bash
+PLUGIN_DIR=/home/nuclear/rh-data/plugins    # replace with the path you found
+mkdir -p "$PLUGIN_DIR"
+git clone https://github.com/yanazoo/vrxc_elrs.git /tmp/vrxc_elrs_tmp
+cp -r /tmp/vrxc_elrs_tmp/custom_plugins/vrxc_elrs "$PLUGIN_DIR"/
+rm -rf /tmp/vrxc_elrs_tmp
 sudo systemctl restart rotorhazard
+```
+
+Confirm it loaded — the ELRS panels should appear under Settings:
+
+```bash
+journalctl -u rotorhazard -n 100 --no-pager | grep -i elrs
 ```
 
 #### Updating
 
-Run the one-line installer again — it overwrites the existing files and restarts the service.
+Run the one-line installer again. It replaces the plugin and keeps the
+previous version under `.vrxc_elrs-backup/` in case you need to roll back.
 
 ---
 
@@ -195,29 +227,58 @@ Full list of OSD elements:
 bash <(curl -fsSL https://raw.githubusercontent.com/yanazoo/vrxc_elrs/master/tools/install.sh)
 ```
 
-インストール先を自動検出してファイルを配置し、サービスを再起動します。
+RotorHazard 本体の場所をスクリプト自身が探してファイルを配置し、サービスを再起動します。インストール先をハードコードしていないため、**ユーザー名やディレクトリ構成が違っても動作します**（NuclearHazard 4.4 でユーザー名が `NuclearHazard` → `nuclear` に変わった場合など）。
+
+ファイルは一時領域に取得して検証してから入れ替えるので、**ダウンロードが途中で失敗しても稼働中のプラグインは壊れません**。
+
+主なオプション:
+
+```bash
+# どこに入るかだけ確認（何も変更しない）
+bash <(curl -fsSL .../install.sh) --dry-run
+
+# master ではなく特定のリリースを入れる
+bash <(curl -fsSL .../install.sh) --ref=v1.1.4
+
+# 自動検出が外れた場合に場所を明示する
+bash <(curl -fsSL .../install.sh) --dir=/home/nuclear/rh-data/plugins
+```
 
 #### 手動インストール
 
-```bash
-# NuclearHazard の場合
-cd /home/NuclearHazard/rh-data/plugins
-git clone https://github.com/yanazoo/vrxc_elrs.git _tmp
-cp -r _tmp/custom_plugins/vrxc_elrs ./
-rm -rf _tmp
-sudo systemctl restart rotorhazard
+プラグインの置き場所はイメージによって違うため、まず自分の環境を確認します。
 
-# 標準 Raspberry Pi の場合
-cd /home/pi/RotorHazard/src/server/custom_plugins
-git clone https://github.com/yanazoo/vrxc_elrs.git _tmp
-cp -r _tmp/custom_plugins/vrxc_elrs ./
-rm -rf _tmp
+```bash
+# NuclearHazard 系は rh-data 配下（本体更新で消えない）
+ls -d /home/*/rh-data/plugins
+
+# それ以外は server ディレクトリ配下の custom_plugins
+ls -d /home/*/RotorHazard/src/server/custom_plugins
+
+# RotorHazard 本体の場所が分からない場合
+systemctl show rotorhazard -p WorkingDirectory
+```
+
+見つかったディレクトリにコピーします。
+
+```bash
+PLUGIN_DIR=/home/nuclear/rh-data/plugins    # 上で確認したパスに置き換える
+mkdir -p "$PLUGIN_DIR"
+git clone https://github.com/yanazoo/vrxc_elrs.git /tmp/vrxc_elrs_tmp
+cp -r /tmp/vrxc_elrs_tmp/custom_plugins/vrxc_elrs "$PLUGIN_DIR"/
+rm -rf /tmp/vrxc_elrs_tmp
 sudo systemctl restart rotorhazard
+```
+
+読み込まれたかの確認（「設定」画面に ELRS のパネルが出れば成功です）:
+
+```bash
+journalctl -u rotorhazard -n 100 --no-pager | grep -i elrs
 ```
 
 #### アップデート
 
-同じワンライン インストーラーを再実行するだけです。既存ファイルを上書きしてサービスを再起動します。
+同じワンライン インストーラーを再実行するだけです。旧版は `.vrxc_elrs-backup/` に直近3世代まで退避されるので、問題があれば戻せます。
 
 ---
 
