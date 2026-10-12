@@ -44,6 +44,9 @@ class ELRSBackpack(VRxController):
         # Per-pilot generation counter: a delayed row-clear only fires if no
         # newer lap has redrawn the row in the meantime.
         self._lap_clear_token: dict[int, int] = {}
+        # Intended OSD screen per recipient UID; see "OSD frame" below.
+        self._osd_frames: dict[bytes | None, dict[int, dict[int, str]]] = {}
+        self._send_uid: bytes | None = None
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -197,6 +200,7 @@ class ELRSBackpack(VRxController):
             self._send_queue.get()
 
         self._last_sent_osd.clear()
+        self._osd_frames.clear()
 
         self._connection = connection_type(self._send_queue, self._recieve_queue)
         if not self._connection.connect(**kwargs):
@@ -380,7 +384,33 @@ class ELRSBackpack(VRxController):
         if self._backpack_connected:
             self._send_queue.put(msp)
 
+    # ------------------------------------------------------------------
+    # OSD frame
+    #
+    # The goggles render each DISPLAY from what was written since the
+    # previous one, not from a persistent canvas. Writing a single row and
+    # displaying it therefore blanks every other row - the race clock, which
+    # redraws its row every second, was wiping the lap time and best lap.
+    #
+    # So the plugin keeps the intended screen for each recipient and every
+    # DISPLAY sends the whole frame: clear, every row, display. Handlers keep
+    # calling the primitives below exactly as before; they now edit the frame
+    # of the current SET_SEND_UID recipient, and send_display_osd flushes it.
+    # A full frame is also correct on goggles that do keep their canvas.
+    # ------------------------------------------------------------------
+
+    def _frame(self) -> dict[int, dict[int, str]]:
+        """Rows (row -> {col: text}) intended for the current recipient."""
+        return self._osd_frames.setdefault(self._send_uid, {})
+
+    def _send_osd_packet(self, payload: bytearray) -> None:
+        packet = MSPPacket()
+        packet.set_function(MSPTypes.MSP_ELRS_SET_OSD)
+        packet.set_payload(payload)
+        self.send_msp(packet)
+
     def set_send_uid(self, address: bytes) -> None:
+        self._send_uid = bytes(address)
         packet = MSPPacket()
         packet.set_function(MSPTypes.MSP_ELRS_SET_SEND_UID)
         payload = bytearray()
@@ -390,6 +420,7 @@ class ELRSBackpack(VRxController):
         self.send_msp(packet)
 
     def reset_send_uid(self) -> None:
+        self._send_uid = None
         packet = MSPPacket()
         packet.set_function(MSPTypes.MSP_ELRS_SET_SEND_UID)
         payload = bytearray()
@@ -398,44 +429,28 @@ class ELRSBackpack(VRxController):
         self.send_msp(packet)
 
     def send_clear_osd(self) -> None:
-        packet = MSPPacket()
-        packet.set_function(MSPTypes.MSP_ELRS_SET_OSD)
-        payload = bytearray()
-        payload.append(0x02)
-        packet.set_payload(payload)
-        self.send_msp(packet)
+        self._frame().clear()
 
     def send_osd_text(self, row: int, col: int, text: str) -> None:
-        payload = bytearray((0x03, row, col, 0))
-        for index, char in enumerate(text):
-            if index >= 50:
-                break
-            char_code = ord(char)
-            if char_code > 255:
-                continue
-            payload.append(char_code)
-
-        packet = MSPPacket()
-        packet.set_function(MSPTypes.MSP_ELRS_SET_OSD)
-        packet.set_payload(payload)
-        self.send_msp(packet)
-
-    def send_display_osd(self) -> None:
-        packet = MSPPacket()
-        packet.set_function(MSPTypes.MSP_ELRS_SET_OSD)
-        payload = bytearray((0x04,))
-        packet.set_payload(payload)
-        self.send_msp(packet)
+        self._frame().setdefault(row, {})[col] = text
 
     def send_clear_osd_row(self, row: int) -> None:
-        payload = bytearray((0x03, row, 0, 0))
-        for _ in range(50):
-            payload.append(0)
+        self._frame().pop(row, None)
 
-        packet = MSPPacket()
-        packet.set_function(MSPTypes.MSP_ELRS_SET_OSD)
-        packet.set_payload(payload)
-        self.send_msp(packet)
+    def send_display_osd(self) -> None:
+        self._send_osd_packet(bytearray((0x02,)))
+        for row in sorted(self._frame()):
+            for col, text in self._frame()[row].items():
+                payload = bytearray((0x03, row, col, 0))
+                for index, char in enumerate(text):
+                    if index >= 50:
+                        break
+                    char_code = ord(char)
+                    if char_code > 255:
+                        continue
+                    payload.append(char_code)
+                self._send_osd_packet(payload)
+        self._send_osd_packet(bytearray((0x04,)))
 
     def version_request(self):
         packet = MSPPacket()
@@ -834,9 +849,9 @@ class ELRSBackpack(VRxController):
 
             draw(clear_first=True)
 
-            # Redraw a couple of times so one lost packet can't blank the row.
-            # Redraws never clear, so a loss can only delay the text, never
-            # erase what is already on screen.
+            # Redraw a couple of times so one lost packet can't blank the row
+            # for the rest of the lap. With the race clock on, every clock tick
+            # also re-sends the whole frame, so a loss heals within a second.
             uptime = self._option_float("_results_uptime", 40) * 1e-1
             elapsed = 0.0
             for _ in range(LAP_OSD_REPEATS):
