@@ -23,6 +23,13 @@ logger = logging.getLogger(__name__)
 LAP_OSD_REPEATS = 2
 LAP_OSD_REPEAT_INTERVAL = 0.8
 
+# OSD rows are always written at this width so each write replaces the whole
+# row (HDZero: 50 columns). A row that became empty is written as spaces on
+# this many further displays as well, in case one of those writes is lost.
+OSD_COLS = 50
+OSD_ROWS = 18
+OSD_BLANK_RESENDS = 2
+
 
 class ELRSBackpack(VRxController):
     _connection: BackpackConnection | None = None
@@ -47,6 +54,11 @@ class ELRSBackpack(VRxController):
         # Intended OSD screen per recipient UID; see "OSD frame" below.
         self._osd_frames: dict[bytes | None, dict[int, dict[int, str]]] = {}
         self._send_uid: bytes | None = None
+        # Per recipient: rows last sent with text, rows still to resend blank,
+        # and recipients whose next display starts with the OSD clear command.
+        self._osd_shown: dict[bytes | None, set[int]] = {}
+        self._osd_blank: dict[bytes | None, dict[int, int]] = {}
+        self._osd_hard_clear: set[bytes | None] = set()
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -201,6 +213,9 @@ class ELRSBackpack(VRxController):
 
         self._last_sent_osd.clear()
         self._osd_frames.clear()
+        self._osd_shown.clear()
+        self._osd_blank.clear()
+        self._osd_hard_clear.clear()
 
         self._connection = connection_type(self._send_queue, self._recieve_queue)
         if not self._connection.connect(**kwargs):
@@ -291,7 +306,7 @@ class ELRSBackpack(VRxController):
                 uid = self.get_pilot_uid(pid)
                 with self._queue_lock:
                     self.set_send_uid(uid)
-                    self.send_clear_osd()
+                    self.send_clear_osd(hard=True)
                     self.send_display_osd()
                     self.reset_send_uid()
             except Exception:
@@ -387,16 +402,24 @@ class ELRSBackpack(VRxController):
     # ------------------------------------------------------------------
     # OSD frame
     #
-    # The goggles render each DISPLAY from what was written since the
-    # previous one, not from a persistent canvas. Writing a single row and
-    # displaying it therefore blanks every other row - the race clock, which
-    # redraws its row every second, was wiping the lap time and best lap.
+    # Some goggles render each DISPLAY from what was written since the
+    # previous one, so writing a single row and displaying it blanks every
+    # other row (the race clock, redrawn every second, wiped the lap time and
+    # best lap). The plugin therefore keeps the intended screen for each
+    # recipient and every DISPLAY resends all of its rows.
     #
-    # So the plugin keeps the intended screen for each recipient and every
-    # DISPLAY sends the whole frame: clear, every row, display. Handlers keep
-    # calling the primitives below exactly as before; they now edit the frame
-    # of the current SET_SEND_UID recipient, and send_display_osd flushes it.
-    # A full frame is also correct on goggles that do keep their canvas.
+    # It does not start with the OSD clear command. HDZero keeps a canvas
+    # that only clear blanks; with clear first, a row write lost on the
+    # ESP-NOW hop between clear and display shows the screen without that row
+    # until the next display, so rows vanished and flickered. Each row is
+    # written at its full width instead, a row that became empty is
+    # overwritten with spaces (and again on the next OSD_BLANK_RESENDS
+    # displays), and clear is only sent when the whole screen should go blank
+    # (send_clear_osd(hard=True): staging, lap delete, laps clear). A lost
+    # write now leaves the previous text up instead of blanking the row.
+    #
+    # Handlers keep calling the primitives below; they edit the frame of the
+    # current SET_SEND_UID recipient, and send_display_osd flushes it.
     # ------------------------------------------------------------------
 
     def _frame(self) -> dict[int, dict[int, str]]:
@@ -428,8 +451,10 @@ class ELRSBackpack(VRxController):
         packet.set_payload(payload)
         self.send_msp(packet)
 
-    def send_clear_osd(self) -> None:
+    def send_clear_osd(self, hard: bool = False) -> None:
         self._frame().clear()
+        if hard:
+            self._osd_hard_clear.add(self._send_uid)
 
     def send_osd_text(self, row: int, col: int, text: str) -> None:
         self._frame().setdefault(row, {})[col] = text
@@ -437,19 +462,50 @@ class ELRSBackpack(VRxController):
     def send_clear_osd_row(self, row: int) -> None:
         self._frame().pop(row, None)
 
+    def _osd_row_bytes(self, cells: dict[int, str]) -> bytearray:
+        line = bytearray(b" " * OSD_COLS)
+        for col, text in cells.items():
+            pos = col
+            for char in text:
+                if pos >= OSD_COLS:
+                    break
+                char_code = ord(char)
+                if char_code > 255:
+                    continue
+                line[pos] = char_code
+                pos += 1
+        return line
+
     def send_display_osd(self) -> None:
-        self._send_osd_packet(bytearray((0x02,)))
-        for row in sorted(self._frame()):
-            for col, text in self._frame()[row].items():
-                payload = bytearray((0x03, row, col, 0))
-                for index, char in enumerate(text):
-                    if index >= 50:
-                        break
-                    char_code = ord(char)
-                    if char_code > 255:
-                        continue
-                    payload.append(char_code)
-                self._send_osd_packet(payload)
+        uid = self._send_uid
+        frame = self._frame()
+        shown = self._osd_shown.setdefault(uid, set())
+        blank = self._osd_blank.setdefault(uid, {})
+        hard = uid in self._osd_hard_clear
+        self._osd_hard_clear.discard(uid)
+        if hard:
+            self._send_osd_packet(bytearray((0x02,)))
+        for row in range(OSD_ROWS):
+            cells = frame.get(row)
+            if cells:
+                shown.add(row)
+                blank.pop(row, None)
+                line = self._osd_row_bytes(cells)
+            else:
+                if row in shown:
+                    shown.discard(row)
+                    blank[row] = OSD_BLANK_RESENDS + 1
+                left = blank.get(row, 0)
+                if left == 0:
+                    continue
+                if left == 1:
+                    del blank[row]
+                else:
+                    blank[row] = left - 1
+                if hard:
+                    continue  # the clear command blanks it this time
+                line = bytearray(b" " * OSD_COLS)
+            self._send_osd_packet(bytearray((0x03, row, 0, 0)) + line)
         self._send_osd_packet(bytearray((0x04,)))
 
     def version_request(self):
@@ -498,7 +554,7 @@ class ELRSBackpack(VRxController):
 
             gevent.sleep(1)
             with self._queue_lock:
-                self.send_clear_osd()
+                self.send_clear_osd(hard=True)
                 self.send_display_osd()
 
         gevent.spawn(test)
@@ -641,7 +697,7 @@ class ELRSBackpack(VRxController):
         def arm(uid):
             with self._queue_lock:
                 self.set_send_uid(uid)
-                self.send_clear_osd()
+                self.send_clear_osd(hard=True)
                 self.send_osd_text(*stage_mesage)
                 if heat_message_parms:
                     self.send_osd_text(*heat_message_parms)
@@ -901,7 +957,7 @@ class ELRSBackpack(VRxController):
         def delete(uid):
             with self._queue_lock:
                 self.set_send_uid(uid)
-                self.send_clear_osd()
+                self.send_clear_osd(hard=True)
                 self.send_display_osd()
                 self.reset_send_uid()
 
@@ -1003,7 +1059,7 @@ class ELRSBackpack(VRxController):
         def clear(uid):
             with self._queue_lock:
                 self.set_send_uid(uid)
-                self.send_clear_osd()
+                self.send_clear_osd(hard=True)
                 self.send_display_osd()
                 self.reset_send_uid()
 
