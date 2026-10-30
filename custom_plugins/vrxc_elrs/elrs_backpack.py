@@ -28,7 +28,16 @@ LAP_OSD_REPEAT_INTERVAL = 0.8
 # this many further displays as well, in case one of those writes is lost.
 OSD_COLS = 50
 OSD_ROWS = 18
-OSD_BLANK_RESENDS = 2
+# A display that changes what a recipient should see (other than the race
+# clock ticking) is sent again OSD_REFRESH_REPEATS times, or
+# OSD_CLEAR_REPEATS times when it takes something off the screen,
+# OSD_REFRESH_INTERVAL seconds apart. Once the race clock stops nothing else
+# redraws the screen, so a single lost write used to leave the clock after
+# LAND NOW!, an expired lap time or FINISHED! up for good.
+OSD_REFRESH_REPEATS = 2
+OSD_CLEAR_REPEATS = 4
+OSD_REFRESH_INTERVAL = 0.2
+OSD_BLANK_RESENDS = OSD_CLEAR_REPEATS
 
 
 class ELRSBackpack(VRxController):
@@ -59,6 +68,11 @@ class ELRSBackpack(VRxController):
         self._osd_shown: dict[bytes | None, set[int]] = {}
         self._osd_blank: dict[bytes | None, dict[int, int]] = {}
         self._osd_hard_clear: set[bytes | None] = set()
+        # Per recipient: each row's bytes as last sent (to tell a change from
+        # a redraw), refresh displays still to send, recipients being refreshed.
+        self._osd_sent: dict[bytes | None, dict[int, bytes]] = {}
+        self._osd_refresh_left: dict[bytes | None, int] = {}
+        self._osd_refreshing: set[bytes | None] = set()
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -216,6 +230,8 @@ class ELRSBackpack(VRxController):
         self._osd_shown.clear()
         self._osd_blank.clear()
         self._osd_hard_clear.clear()
+        self._osd_sent.clear()
+        self._osd_refresh_left.clear()
 
         self._connection = connection_type(self._send_queue, self._recieve_queue)
         if not self._connection.connect(**kwargs):
@@ -418,6 +434,10 @@ class ELRSBackpack(VRxController):
     # (send_clear_osd(hard=True): staging, lap delete, laps clear). A lost
     # write now leaves the previous text up instead of blanking the row.
     #
+    # Displays that change the screen are repeated (OSD_REFRESH_REPEATS /
+    # OSD_CLEAR_REPEATS), so a lost draw or clear is repaired even after the
+    # race clock has stopped redrawing every second.
+    #
     # Handlers keep calling the primitives below; they edit the frame of the
     # current SET_SEND_UID recipient, and send_display_osd flushes it.
     # ------------------------------------------------------------------
@@ -476,25 +496,34 @@ class ELRSBackpack(VRxController):
                 pos += 1
         return line
 
-    def send_display_osd(self) -> None:
+    def send_display_osd(self, clock_row: int | None = None) -> None:
+        """Send the current recipient's frame. clock_row: this display only
+        moves the race clock (no refresh displays for that)."""
         uid = self._send_uid
         frame = self._frame()
         shown = self._osd_shown.setdefault(uid, set())
         blank = self._osd_blank.setdefault(uid, {})
+        sent = self._osd_sent.setdefault(uid, {})
         hard = uid in self._osd_hard_clear
         self._osd_hard_clear.discard(uid)
+        changed = cleared = hard
         if hard:
             self._send_osd_packet(bytearray((0x02,)))
         for row in range(OSD_ROWS):
             cells = frame.get(row)
+            line = self._osd_row_bytes(cells) if cells else bytearray(b" " * OSD_COLS)
+            if sent.get(row, b" " * OSD_COLS) != line:
+                sent[row] = bytes(line)
+                if row != clock_row:
+                    changed = True
             if cells:
                 shown.add(row)
                 blank.pop(row, None)
-                line = self._osd_row_bytes(cells)
             else:
                 if row in shown:
                     shown.discard(row)
                     blank[row] = OSD_BLANK_RESENDS + 1
+                    cleared = True
                 left = blank.get(row, 0)
                 if left == 0:
                     continue
@@ -504,9 +533,39 @@ class ELRSBackpack(VRxController):
                     blank[row] = left - 1
                 if hard:
                     continue  # the clear command blanks it this time
-                line = bytearray(b" " * OSD_COLS)
             self._send_osd_packet(bytearray((0x03, row, 0, 0)) + line)
         self._send_osd_packet(bytearray((0x04,)))
+        if changed and uid is not None:
+            want = OSD_CLEAR_REPEATS if cleared else OSD_REFRESH_REPEATS
+            if self._osd_refresh_left.get(uid, 0) < want:
+                self._osd_refresh_left[uid] = want
+            if uid not in self._osd_refreshing:
+                self._osd_refreshing.add(uid)
+                self._start_osd_refresh(uid)
+
+    def _start_osd_refresh(self, uid: bytes) -> None:
+        gevent.spawn(self._osd_refresh_loop, uid)
+
+    def _osd_refresh_loop(self, uid: bytes) -> None:
+        """Resend uid's frame until its refresh count runs out."""
+        try:
+            while True:
+                gevent.sleep(OSD_REFRESH_INTERVAL)
+                with self._queue_lock:
+                    left = self._osd_refresh_left.get(uid, 0)
+                    if left <= 0 or not self._backpack_connected:
+                        # Under the lock, so a display that changes the screen
+                        # right after this starts a new refresh loop.
+                        self._osd_refresh_left.pop(uid, None)
+                        self._osd_refreshing.discard(uid)
+                        return
+                    self._osd_refresh_left[uid] = left - 1
+                    self.set_send_uid(uid)
+                    self.send_display_osd()  # unchanged now: schedules nothing
+                    self.reset_send_uid()
+        except Exception:
+            logger.exception("OSD refresh error")
+            self._osd_refreshing.discard(uid)
 
     def version_request(self):
         packet = MSPPacket()
@@ -594,7 +653,7 @@ class ELRSBackpack(VRxController):
                     with self._queue_lock:
                         self.set_send_uid(uid)
                         self.send_osd_text(clock_row, clock_col, message)
-                        self.send_display_osd()
+                        self.send_display_osd(clock_row=clock_row)
                         self.reset_send_uid()
                     sent_count += 1
                 except Exception:
