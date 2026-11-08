@@ -40,6 +40,8 @@ This is a fork of [VRxC_ELRS](https://github.com/i-am-grub/VRxC_ELRS) by [Bryce 
 > **SOCKET mode** uses the [yanazoo/elrs-netpack](https://github.com/yanazoo/elrs-netpack) firmware.
 > The bridge consists of a **XIAO ESP32-S3** (WiFi / TCP) and an **ESP32 Wrover-E** (ESP-NOW to goggles) connected via UART.
 > For hardware wiring and firmware flashing instructions, see the **[elrs-netpack README](https://github.com/yanazoo/elrs-netpack)**.
+>
+> For the race director's switch over SOCKET, flash the bridge with [elrs-netpack v2.9](https://github.com/yanazoo/elrs-netpack/releases/tag/v2.9) or later. The plugin then keeps the bridge on the race director's UID between OSD updates and asks it to pass on only the director's switch.
 
 ---
 
@@ -216,6 +218,8 @@ Full list of OSD elements:
 > **SOCKET モード**は [yanazoo/elrs-netpack](https://github.com/yanazoo/elrs-netpack) ファームウェアを使用します。
 > **XIAO ESP32-S3**（WiFi / TCP 担当）と **ESP32 Wrover-E**（ゴーグルへの ESP-NOW 担当）を UART 接続したデュアル MCU 構成です。
 > ハードウェアの配線やファームウェアの書き込み手順は **[elrs-netpack の README](https://github.com/yanazoo/elrs-netpack)** を参照してください。
+>
+> SOCKET でレースディレクターのスイッチを使う場合は、ブリッジを [elrs-netpack v2.9](https://github.com/yanazoo/elrs-netpack/releases/tag/v2.9) 以降に書き換えてください。プラグインは、OSD を送っていない間はブリッジをディレクターの UID で待たせ、ディレクターのスイッチだけを受け取るよう設定します。
 
 ---
 
