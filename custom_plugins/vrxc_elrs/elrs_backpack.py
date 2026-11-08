@@ -39,11 +39,22 @@ OSD_CLEAR_REPEATS = 4
 OSD_REFRESH_INTERVAL = 0.2
 OSD_BLANK_RESENDS = OSD_CLEAR_REPEATS
 
+# Race director over the elrs-netpack ESP-NOW bridge (v2.9+). The bridge hears
+# ESP-NOW only on the UID it was last pointed at, so between OSD bursts it is
+# parked on the RD's UID, and its listen filter passes on only the RD's frames
+# (a pilot's own DVR switch, heard during that pilot's burst, can't start or
+# stop the race). The filter is resent and the bridge re-parked periodically,
+# in case the bridge rebooted. A backpack that never answers the filter
+# request (the official ELRS timer backpack) is handled as before.
+BRIDGE_LISTEN_INTERVAL = 5.0
+BRIDGE_PARK_INTERVAL = 2.0
+
 
 class ELRSBackpack(VRxController):
     _connection: BackpackConnection | None = None
     _reconnect_greenlet: gevent.Greenlet | None = None
     _race_clock_greenlet: gevent.Greenlet | None = None
+    _bridge_greenlet: gevent.Greenlet | None = None
     _race_start_time: float = 0.0
 
     def __init__(self, name, label, rhapi):
@@ -63,6 +74,8 @@ class ELRSBackpack(VRxController):
         # Intended OSD screen per recipient UID; see "OSD frame" below.
         self._osd_frames: dict[bytes | None, dict[int, dict[int, str]]] = {}
         self._send_uid: bytes | None = None
+        # True once the bridge confirmed its RD listen filter.
+        self._bridge_filter = False
         # Per recipient: rows last sent with text, rows still to resend blank,
         # and recipients whose next display starts with the OSD clear command.
         self._osd_shown: dict[bytes | None, set[int]] = {}
@@ -232,6 +245,7 @@ class ELRSBackpack(VRxController):
         self._osd_hard_clear.clear()
         self._osd_sent.clear()
         self._osd_refresh_left.clear()
+        self._bridge_filter = False
 
         self._connection = connection_type(self._send_queue, self._recieve_queue)
         if not self._connection.connect(**kwargs):
@@ -252,6 +266,9 @@ class ELRSBackpack(VRxController):
             )
 
         self.version_request()
+        with self._queue_lock:
+            self._send_bridge_listen()
+        self._start_bridge_monitor()
         return True
 
     def _start_reconnect_monitor(self) -> None:
@@ -280,6 +297,38 @@ class ELRSBackpack(VRxController):
             except Exception:
                 logger.exception("再接続中にエラーが発生しました")
 
+    def _start_bridge_monitor(self) -> None:
+        if self._bridge_greenlet is None or self._bridge_greenlet.dead:
+            self._bridge_greenlet = gevent.spawn(self._bridge_loop)
+
+    def _bridge_loop(self) -> None:
+        """Resend the RD listen filter and re-park the bridge on the RD."""
+        last_listen = time.monotonic()
+        while True:
+            gevent.sleep(BRIDGE_PARK_INTERVAL)
+            if not self._backpack_connected:
+                continue
+            try:
+                with self._queue_lock:
+                    now = time.monotonic()
+                    if now - last_listen >= BRIDGE_LISTEN_INTERVAL:
+                        last_listen = now
+                        self._send_bridge_listen()
+                    # Idle (no OSD burst in progress): point it at the RD again.
+                    if self._bridge_filter and self._send_uid is None:
+                        self.reset_send_uid()
+            except Exception:
+                logger.exception("Bridge listen error")
+
+    def _send_bridge_listen(self) -> None:
+        """Ask the bridge to pass on only frames from the RD (none set: all)."""
+        packet = MSPPacket()
+        packet.set_function(MSPTypes.MSP_BRIDGE_SET_LISTEN)
+        rd_uid = self._get_rd_uid()
+        if rd_uid:
+            packet.set_payload(rd_uid)
+        self.send_msp(packet)
+
     def recieve_loop(self) -> None:
         try:
             while True:
@@ -291,6 +340,13 @@ class ELRSBackpack(VRxController):
                         message = f"バックパックファームウェアバージョン: {version}"
                         logger.info(message)
                         self._rhapi.ui.message_notify(self._rhapi.language.__(message))
+                    elif packet.function == MSPTypes.MSP_BRIDGE_SET_LISTEN:
+                        on = bool(packet.payload) and packet.payload[0] == 1
+                        if on != self._bridge_filter:
+                            logger.info(
+                                "Bridge listen filter %s", "on" if on else "off"
+                            )
+                        self._bridge_filter = on
 
                 if packet.type_ == MSPPacketType.COMMAND:
                     if packet.function == MSPTypes.MSP_ELRS_BACKPACK_SET_RECORDING_STATE:
@@ -467,7 +523,14 @@ class ELRSBackpack(VRxController):
         packet = MSPPacket()
         packet.set_function(MSPTypes.MSP_ELRS_SET_SEND_UID)
         payload = bytearray()
-        payload.append(0x00)
+        rd_uid = self._get_rd_uid() if self._bridge_filter else None
+        if rd_uid:
+            # elrs-netpack bridge: park on the RD's UID so its switch is heard
+            # between bursts (mode 0 would leave it on the last pilot's UID).
+            payload.append(0x01)
+            payload += rd_uid
+        else:
+            payload.append(0x00)
         packet.set_payload(payload)
         self.send_msp(packet)
 

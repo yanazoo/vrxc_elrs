@@ -60,6 +60,8 @@ class MSPTypes(IntEnum):
     MSP_ELRS_BACKPACK_CRSF_TLM = 0x11
     MSP_ELRS_SET_SEND_UID = 0x00B5
     MSP_ELRS_SET_OSD = 0x00B6
+    # elrs-netpack ESP-NOW bridge (v2.9+): pass on only frames from one UID
+    MSP_BRIDGE_SET_LISTEN = 0x0F01
 
     # CRSF encapsulated msp defines
     ENCAPSULATED_MSP_PAYLOAD_SIZE = 4
@@ -185,7 +187,13 @@ class MSPPacket:
 
                 if len(buffer) == MSP_HEADER_LENGTH:
                     flags = buffer[3]
-                    function_ = MSPTypes(cls._bytes_to_int(buffer[4:6]))
+                    try:
+                        function_ = MSPTypes(cls._bytes_to_int(buffer[4:6]))
+                    except ValueError:
+                        # Unknown function: skip the frame instead of ending
+                        # the receive greenlet.
+                        state = MSPState.IDLE
+                        continue
                     length = cls._bytes_to_int(buffer[6:8])
 
                     if length == 0:
