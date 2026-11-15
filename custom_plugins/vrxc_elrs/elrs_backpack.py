@@ -48,6 +48,8 @@ OSD_BLANK_RESENDS = OSD_CLEAR_REPEATS
 # request (the official ELRS timer backpack) is handled as before.
 BRIDGE_LISTEN_INTERVAL = 5.0
 BRIDGE_PARK_INTERVAL = 2.0
+# Push switch: an "on" this soon after the last one is the same press.
+RD_PRESS_S = 1.5
 
 
 class ELRSBackpack(VRxController):
@@ -76,6 +78,9 @@ class ELRSBackpack(VRxController):
         self._send_uid: bytes | None = None
         # True once the bridge confirmed its RD listen filter.
         self._bridge_filter = False
+        # Race director's switch: last state seen (toggle), last press (push).
+        self._rd_last_state: int | None = None
+        self._rd_last_press = 0.0
         # Per recipient: rows last sent with text, rows still to resend blank,
         # and recipients whose next display starts with the OSD clear command.
         self._osd_shown: dict[bytes | None, set[int]] = {}
@@ -333,43 +338,70 @@ class ELRSBackpack(VRxController):
         try:
             while True:
                 packet: MSPPacket = self._recieve_queue.get()
-
-                if packet.type_ == MSPPacketType.RESPONSE:
-                    if packet.function == MSPTypes.MSP_ELRS_GET_BACKPACK_VERSION:
-                        version = bytes(i for i in packet.payload if i != 0).decode("utf-8")
-                        message = f"バックパックファームウェアバージョン: {version}"
-                        logger.info(message)
-                        self._rhapi.ui.message_notify(self._rhapi.language.__(message))
-                    elif packet.function == MSPTypes.MSP_BRIDGE_SET_LISTEN:
-                        on = bool(packet.payload) and packet.payload[0] == 1
-                        if on != self._bridge_filter:
-                            logger.info(
-                                "Bridge listen filter %s", "on" if on else "off"
-                            )
-                        self._bridge_filter = on
-
-                if packet.type_ == MSPPacketType.COMMAND:
-                    if packet.function == MSPTypes.MSP_ELRS_BACKPACK_SET_RECORDING_STATE:
-                        itr = packet.iterate_payload()
-                        val = next(itr)
-                        switch_type = self._rhapi.db.option("_tx_switch_type") or "toggle"
-                        if switch_type == "push":
-                            # Push: react only on press (0x01); toggle race state
-                            if val == 0x01:
-                                status = self._rhapi.race.status
-                                if status == RaceStatus.READY:
-                                    self.start_race()
-                                elif status in (RaceStatus.STAGING, RaceStatus.RACING):
-                                    self.stop_race()
-                        else:
-                            # Toggle: 0x01 = start, 0x00 = stop
-                            if val == 0x00:
-                                self.stop_race()
-                            elif val == 0x01:
-                                self.start_race()
+                # One bad frame (an empty payload, a version that is not
+                # text) or an error from RotorHazard must not end this loop:
+                # the race director's switch would be dead until a restart.
+                try:
+                    self._handle_packet(packet)
+                except Exception:
+                    logger.exception("Backpack packet handling error")
 
         except KeyboardInterrupt:
             logger.error("Stopping backpack connector greenlet")
+
+    def _handle_packet(self, packet: MSPPacket) -> None:
+        if packet.type_ == MSPPacketType.RESPONSE:
+            if packet.function == MSPTypes.MSP_ELRS_GET_BACKPACK_VERSION:
+                version = bytes(i for i in packet.payload if i != 0).decode(
+                    "utf-8", errors="replace"
+                )
+                message = f"バックパックファームウェアバージョン: {version}"
+                logger.info(message)
+                self._rhapi.ui.message_notify(self._rhapi.language.__(message))
+            elif packet.function == MSPTypes.MSP_BRIDGE_SET_LISTEN:
+                on = bool(packet.payload) and packet.payload[0] == 1
+                if on != self._bridge_filter:
+                    logger.info("Bridge listen filter %s", "on" if on else "off")
+                self._bridge_filter = on
+
+        if packet.type_ == MSPPacketType.COMMAND:
+            if packet.function == MSPTypes.MSP_ELRS_BACKPACK_SET_RECORDING_STATE:
+                if not packet.payload:
+                    return
+                self._rd_switch(packet.payload[0])
+
+    def _rd_switch(self, val: int) -> None:
+        """
+        The race director's TX switch. A TX may send its state again and
+        again, so (as the FPV C5 Lap Timer does):
+        toggle - only a change counts (on starts, off stops); a repeated
+          "on" must not start the next race by itself once RotorHazard is
+          ready again while the switch stays on;
+        push - every "on" is a press, but one within RD_PRESS_S of the last
+          is that same press sent again (it would start and at once stop).
+        """
+        val = 1 if val else 0
+        switch_type = self._rhapi.db.option("_tx_switch_type") or "toggle"
+        if switch_type == "push":
+            if not val:
+                return
+            now = time.monotonic()
+            if self._rd_last_press and now - self._rd_last_press < RD_PRESS_S:
+                return
+            self._rd_last_press = now
+            status = self._rhapi.race.status
+            if status == RaceStatus.READY:
+                self.start_race()
+            elif status in (RaceStatus.STAGING, RaceStatus.RACING):
+                self.stop_race()
+        else:
+            if val == self._rd_last_state:
+                return
+            self._rd_last_state = val
+            if val:
+                self.start_race()
+            else:
+                self.stop_race()
 
     def _clear_all_osd(self) -> None:
         """Clear OSD for all active pilots in the current heat."""

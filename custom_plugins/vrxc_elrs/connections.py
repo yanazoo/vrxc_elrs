@@ -298,13 +298,19 @@ class SocketConnection:
         Recieves data from the socket and adds it to the queue.
         Uses a large buffer to handle burst data in one recv call.
         """
-        try:
+        # TCP is a byte stream: a frame can arrive split over two recv()
+        # calls. One parser runs over all of them (parsing each recv() on its
+        # own dropped such a frame, e.g. the race director's switch).
+        def chunks():
             while self._connected:
                 data = self._socket.recv(4096)
                 if not data:
-                    break
-                for packet in MSPPacket.packets_from_bytes(data):
-                    self._recieve_queue.put(packet)
+                    return
+                yield data
+
+        try:
+            for packet in MSPPacket.packets_from_stream(chunks()):
+                self._recieve_queue.put(packet)
         except (gevent._socketcommon.cancel_wait_ex, OSError):
             ...
 

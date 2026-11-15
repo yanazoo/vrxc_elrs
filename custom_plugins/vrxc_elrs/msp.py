@@ -3,7 +3,7 @@ ExpressLRS Backpack bridge
 """
 
 import sys
-from collections.abc import Generator, Sequence
+from collections.abc import Generator, Iterable, Sequence
 from enum import Enum, IntEnum, auto
 from typing import Union
 
@@ -15,6 +15,8 @@ else:
     from typing_extensions import Self
 
 MSP_HEADER_LENGTH = 8
+# Longest payload accepted from the backpack (its frames are a few bytes).
+MSP_MAX_PAYLOAD = 512
 
 
 class MSPState(Enum):
@@ -116,12 +118,27 @@ class MSPPacket:
         :yield: The packet
         """
 
-        def _gen() -> Generator[bytes, None, None]:
+        # One parser over everything the queue delivers: a frame that arrives
+        # in two pieces (two reads) is still one frame. Parsing each piece on
+        # its own dropped it.
+        def _gen() -> Generator[int, None, None]:
             while not queue.is_shutdown:
-                yield queue.get()
+                yield from queue.get()
 
-        for bytes_ in _gen():
-            yield from cls.packets_from_bytes(bytes_)
+        yield from cls._generate_packets(_gen())
+
+    @classmethod
+    def packets_from_stream(
+        cls, chunks: Iterable[bytes]
+    ) -> Generator[Self, None, None]:
+        """
+        Parses packets from pieces of one byte stream (a socket's reads): a
+        frame may start in one piece and end in the next.
+
+        :param chunks: The pieces, in order
+        :yield: The packet
+        """
+        yield from cls._generate_packets((i for chunk in chunks for i in chunk))
 
     @classmethod
     def packets_from_bytes(cls, data: bytes) -> Generator[Self, None, None]:
@@ -195,6 +212,11 @@ class MSPPacket:
                         state = MSPState.IDLE
                         continue
                     length = cls._bytes_to_int(buffer[6:8])
+                    if length > MSP_MAX_PAYLOAD:
+                        # A damaged length: don't wait for that many bytes
+                        # (the frames after it would be swallowed as payload).
+                        state = MSPState.IDLE
+                        continue
 
                     if length == 0:
                         state = MSPState.CHECKSUM_V2_NATIVE
